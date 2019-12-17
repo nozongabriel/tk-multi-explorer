@@ -21,10 +21,6 @@ configuration:
             description: > 
                 templates for cache type
             items:
-                name:
-                    type: str
-                    description: >
-                        A human readable name describing this output profile.
                 cache_template:
                     type: template
                     description: >

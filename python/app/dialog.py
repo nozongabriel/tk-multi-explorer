@@ -24,6 +24,8 @@ class AppDialog(QtGui.QWidget):
 
         self._column_names = ColumnNames()
         self._cache_manager = CacheManager(self, self._app)
+        self._project_manager = ProjectManager(self._app)
+        self._icon_manager = IconManager()
 
         self._setup_ui()
         self._fill_projects()
@@ -40,7 +42,7 @@ class AppDialog(QtGui.QWidget):
         title_lab = QtGui.QLabel('Project Explorer')
         refresh_but = QtGui.QPushButton()
         refresh_but.setFixedSize(25, 25)
-        icon = QtGui.QIcon(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources", "refresh.png")))
+        icon = QtGui.QIcon(self._icon_manager.get_pixmap('refresh.png'))
         refresh_but.setIcon(icon)
         refresh_but.clicked.connect(self._refresh)
         
@@ -97,7 +99,7 @@ class AppDialog(QtGui.QWidget):
 
         self._tree_widget.setColumnCount(1)
         self._tree_widget.setHeaderLabels(self._column_names.get_nice_names())
-        self._tree_widget.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._tree_widget.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.SingleSelection)
         self._tree_widget.header().setSectionsMovable(False)
         self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
         self._tree_widget.header().setMinimumSectionSize(100)
@@ -206,7 +208,30 @@ class AppDialog(QtGui.QWidget):
     def add_item_to_tree(self, cache_dict):
         item = TopLevelTreeItem(cache_dict['path'], cache_dict['fields'], self._column_names)
         self._tree_widget.addTopLevelItem(item)
-        item.set_image()
+
+        ext = item.get_path().split('.')[-1]
+        thumb = None
+        if ext == 'abc':
+            thumb = 'alembic.png'
+        elif ext == 'sc':
+            thumb = 'geometry.png'
+        elif ext == 'exr':
+            thumb = 'image.png'
+        elif ext == 'obj':
+            thumb = 'obj.png'
+        elif ext == 'mov':
+            thumb = 'video.png'
+        elif ext == 'vdb':
+            thumb = 'openvdb.png'
+
+        if thumb:
+            pixmap = self._icon_manager.get_pixmap(thumb)
+
+            thumbnail = QtGui.QLabel("", self._tree_widget)
+            thumbnail.setAlignment(QtCore.Qt.AlignHCenter)
+            thumbnail.setPixmap(pixmap)
+            self._tree_widget.setItemWidget(item, self._column_names.index_name('thumb'), thumbnail)
+            self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
     ############################################################################
     # Private methods
@@ -263,6 +288,17 @@ class ColumnNames():
     def get_nice_names(self):
         return self._nice_names
 
+class ProjectManager():
+    def __init__(self, app):
+        self._app = app
+        self._current_toolkit = None
+
+        current_project = self._app.context.project['name']
+        shotgun_projects = self._app.shotgun.find('Project', [], ['name'])
+        self._projects = {}
+        for project in shotgun_projects:
+            self._projects[project['name']] = 'Hello'
+
 class CacheManager():
     def __init__(self, dialog, app):
         self._dialog = dialog
@@ -275,7 +311,7 @@ class CacheManager():
         self._3d_templates = []
         for output_profile in self._app.get_setting("templates", []):
             template = self._app.get_template_by_name(output_profile['cache_template'])
-
+            
             extension = template.definition[-3:]
             if extension == 'exr' or extension == 'jpg':
                 self._2d_templates.append(template)
@@ -323,6 +359,26 @@ class CacheManager():
             if not search_text or (search_text and search_text in cache['path']):
                 self._dialog.add_item_to_tree(cache)
 
+class IconManager(QtGui.QPixmapCache):
+    def __init__(self):
+        super(IconManager, self).__init__()
+        self._label_height = 40
+        self._thumb_dict = {}
+
+        thumb_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources"))
+        thumb_files = ['alembic.png', 'geometry.png', 'image.png', 'obj.png', 'video.png', 'openvdb.png', 'refresh.png']
+
+        for thumb in thumb_files:
+            image = QtGui.QPixmap(os.path.join(thumb_path, thumb))
+            key = self.insert(image.scaledToHeight(self._label_height, QtCore.Qt.FastTransformation))
+
+            self._thumb_dict[thumb] = key
+
+    def get_pixmap(self, name):
+        if name in self._thumb_dict.keys():
+            return self.find(self._thumb_dict[name])
+        return None
+
 class TopLevelTreeItem(QtGui.QTreeWidgetItem):
     def __init__(self, path, fields, column_names):
         super(TopLevelTreeItem, self).__init__()
@@ -339,21 +395,6 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
         time = os.path.getctime(os.path.dirname(self._path))
         date_time = datetime.utcfromtimestamp(time).strftime('%Y-%m-%d %H:%M:%S')
         self.setText(self._column_names.index_name('modif'), date_time)
-
-    def set_image(self):
-        # For demo
-        dir_path = os.path.dirname(os.path.dirname(self._path))
-        thumb_name = '%s.jpg' % os.path.basename(self._path).split('.')[0]
-        thumb_path = os.path.join(dir_path, 'flipbook_panel', thumb_name)
-
-        if os.path.exists(thumb_path):
-            image = QtGui.QPixmap(thumb_path)
-
-            thumbnail = QtGui.QLabel("", self.treeWidget())
-            thumbnail.setAlignment(QtCore.Qt.AlignHCenter)
-            thumbnail.setPixmap(image)
-            self.treeWidget().setItemWidget(self, self._column_names.index_name('thumb'), thumbnail)
-            self.treeWidget().header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
     def get_path(self):
         return self._path
