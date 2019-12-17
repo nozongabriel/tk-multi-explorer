@@ -110,6 +110,7 @@ class AppDialog(QtGui.QWidget):
         self._tree_widget.header().setSortIndicator(self._column_names.index_name('modif'), QtCore.Qt.DescendingOrder)
 
         self._tree_widget.itemDoubleClicked.connect(self._tree_item_double_clicked)
+        self._tree_widget.itemExpanded.connect(self._item_expanded)
 
         tree_layout.addWidget(self._search_bar)
         tree_layout.addWidget(self._tree_widget)
@@ -201,6 +202,9 @@ class AppDialog(QtGui.QWidget):
 
             process.startDetached(program, [path])
             process.close()
+
+    def _item_expanded(self, item):
+        item.item_expand()
 
     ############################################################################
     # Public methods
@@ -310,13 +314,22 @@ class CacheManager():
         self._2d_templates = []
         self._3d_templates = []
         for output_profile in self._app.get_setting("templates", []):
-            template = self._app.get_template_by_name(output_profile['cache_template'])
+            cache_template = self._app.get_template_by_name(output_profile['cache_template'])
+
+            work_template = ''
+            if output_profile['work_template']:
+                work_template = self._app.get_template_by_name(output_profile['work_template'])
+            preview_template = ''
+            if output_profile['preview_template']:
+                preview_template = self._app.get_template_by_name(output_profile['preview_template'])
             
-            extension = template.definition[-3:]
+            template_dict = {'cache_template': cache_template, 'work_template': work_template, 'preview_template': preview_template}
+
+            extension = cache_template.definition.split('.')[-1]
             if extension == 'exr' or extension == 'jpg':
-                self._2d_templates.append(template)
+                self._2d_templates.append(template_dict)
             else:
-                self._3d_templates.append(template)
+                self._3d_templates.append(template_dict)
 
     def clear_cache(self):
         self._2d_cache_dict.clear()
@@ -342,11 +355,12 @@ class CacheManager():
                     
     def _caches_from_templates(self, templates, ui_fields, search_text):
         caches = []
-        for template in templates:
+        for template_dict in templates:
+            template = template_dict['cache_template']
             cache_paths = self._app.sgtk.abstract_paths_from_template(template, ui_fields)
             for cache_path in cache_paths:
                 fields = template.get_fields(cache_path)
-                fields['template'] = template
+                fields['templates'] = template_dict
 
                 new_cache_dict = {'path': cache_path, 'fields': fields}
                 caches.append(new_cache_dict)
@@ -386,8 +400,9 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
         self._path = path
         self._column_names = column_names
 
+        self.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
         self.setText(self._column_names.index_name('name'), os.path.basename(self._path).split('.')[0])
-        self.setText(self._column_names.index_name('ver'), str(fields['version']))
+        self.setText(self._column_names.index_name('ver'), str(fields['version']).zfill(3))
         self.setText(self._column_names.index_name('type'), self._path.split('.')[-1])
         self.setText(self._column_names.index_name('depart'), str(fields['Step']))
 
@@ -398,4 +413,14 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
 
     def get_path(self):
         return self._path
+
+    def item_expand(self):
+        work_template = self._fields['templates']['work_template']
+        if work_template:
+            print work_template.apply_fields(self._fields)
+        
+        preview_template = self._fields['templates']['preview_template']
+        if preview_template:
+            print preview_template.apply_fields(self._fields)
+
 
