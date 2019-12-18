@@ -20,13 +20,15 @@ class AppDialog(QtGui.QWidget):
 
         # most of the useful accessors are available through the Application class instance
         # it is often handy to keep a reference to this. You can get it via the following method:
-        self._app = sgtk.platform.current_bundle()
+        self._current_sgtk = sgtk.platform.current_bundle()
 
+        # Get all Managers
         self._column_names = ColumnNames()
-        self._cache_manager = CacheManager(self, self._app)
-        self._project_manager = ProjectManager(self._app)
+        self._cache_manager = CacheManager(self, self._current_sgtk)
+        self._project_manager = ProjectManager(self._current_sgtk)
         self._icon_manager = IconManager()
 
+        # Setup UI
         self._setup_ui()
         self._fill_projects()
         self._fill_filters()
@@ -54,7 +56,7 @@ class AppDialog(QtGui.QWidget):
         side_bar = QtGui.QVBoxLayout()
 
         self._project_combo = QtGui.QComboBox()
-        self._project_combo.currentIndexChanged.connect(self._fill_shots)
+        self._project_combo.currentIndexChanged.connect(self._change_project)
 
         self._shot_list_widget = QtGui.QListWidget()
         self._shot_list_widget.itemClicked.connect(self._refresh)
@@ -133,14 +135,11 @@ class AppDialog(QtGui.QWidget):
         self.layout().addLayout(upper_bar)
         self.layout().addWidget(main_splitter)
 
-    def _fill_shots(self):
+    def _change_project(self):
         self._shot_list_widget.clear()
-
         current_project = self._project_combo.currentText()
-        shotgun_shots = self._app.shotgun.find("Shot", [['project.Project.name', 'is', current_project]], ['code'])
-        shots = []
-        for shot in shotgun_shots:
-            shots.append(shot['code'])
+        
+        shots = self._project_manager.get_new_project(current_project)
         shots.sort()
         self._shot_list_widget.addItems(shots)
 
@@ -197,7 +196,7 @@ class AppDialog(QtGui.QWidget):
                 program = 'C:/Program Files/Shotgun/RV-7.2.6/bin/rv.exe'
             else:
                 msg = "Platform '%s' is not supported." % (system)
-                self._app.log_error(msg)
+                self._current_sgtk.log_error(msg)
                 return
 
             process.startDetached(program, [path])
@@ -210,9 +209,14 @@ class AppDialog(QtGui.QWidget):
     # Public methods
 
     def add_item_to_tree(self, cache_dict):
-        item = TopLevelTreeItem(cache_dict['path'], cache_dict['fields'], self._column_names)
+        item = TreeItem(cache_dict['path'], cache_dict['fields'], self._column_names)
         self._tree_widget.addTopLevelItem(item)
+        self._set_item_icon(item)
 
+    ############################################################################
+    # Private methods
+    
+    def _set_item_icon(self, item):
         ext = item.get_path().split('.')[-1]
         thumb = None
         if ext == 'abc':
@@ -237,24 +241,18 @@ class AppDialog(QtGui.QWidget):
             self._tree_widget.setItemWidget(item, self._column_names.index_name('thumb'), thumbnail)
             self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
-    ############################################################################
-    # Private methods
-
     def _fill_projects(self):
         self._project_combo.clear()
 
-        current_project = self._app.context.project['name']
-        shotgun_projects = self._app.shotgun.find('Project', [], ['name'])
-        projects = []
-        for project in shotgun_projects:
-            projects.append(project['name'])
+        projects = self._project_manager.get_projects()
         projects.sort()
+
         self._project_combo.addItems(projects)
-        self._project_combo.setCurrentText(current_project)
+        self._project_combo.setCurrentText(self._project_manager.get_current_project())
 
     def _fill_filters(self):
         # Step List
-        shotgun_list = self._app.shotgun.find("Step", [], ['code'])
+        shotgun_list = self._current_sgtk.shotgun.find("Step", [], ['code'])
         step_list = []
         for step in shotgun_list:
             step_list.append(step['code'])
@@ -294,14 +292,57 @@ class ColumnNames():
 
 class ProjectManager():
     def __init__(self, app):
-        self._app = app
-        self._current_toolkit = None
+        self._current_sgtk = app
+        
+        # Only works when a context is available!
+        self._current_project = self._current_sgtk.context.project['name']
 
-        current_project = self._app.context.project['name']
-        shotgun_projects = self._app.shotgun.find('Project', [], ['name'])
+        # Toolkit Manager
+        # sa = sgtk.authentication.ShotgunAuthenticator()
+        # current_user = sa.get_user()
+        # self._tk_manager = sgtk.bootstrap.ToolkitManager(current_user)
+
+        # Get all Projects
         self._projects = {}
-        for project in shotgun_projects:
-            self._projects[project['name']] = 'Hello'
+        for project in self._current_sgtk.shotgun.find('Project', [], ['name']):
+            project_name = project['name']
+            project.pop('name', None)
+            
+            self._projects[project_name] = project
+
+    def get_new_project(self, current_project):
+        # Just find the new shots (this should be changed by changing the toolkit object, sent mail to support)
+        shotgun_shots = self._current_sgtk.shotgun.find("Shot", [['project.Project.name', 'is', current_project]], ['code'])
+
+        shots = []
+        for shot in shotgun_shots:
+            shots.append(shot['code'])
+
+        return shots
+
+        # config = self._tk_manager.get_pipeline_configurations(self._projects[current_project])
+        # if len(config) and 'descriptor' in config[0].keys():
+        #     descriptor = config[0]['descriptor']
+
+        #     self._current_sgtk = sgtk.sgtk_from_path(descriptor.get_path())
+
+        #     shotgun_shots = self._current_sgtk.shotgun.find("Shot", [['project.Project.name', 'is', current_project]], ['code'])
+
+        #     shots = []
+        #     for shot in shotgun_shots:
+        #         shots.append(shot['code'])
+
+        #     self._current_project = current_project
+        #     return shots
+        # else:
+        #     self._current_sgtk.log_error('Could not find sgtk config for %s' % self._projects[current_project])
+        #     return None
+    
+    def get_current_project(self):
+        return self._current_project
+
+    def get_projects(self):
+        return self._projects.keys()
 
 class CacheManager():
     def __init__(self, dialog, app):
@@ -393,14 +434,17 @@ class IconManager(QtGui.QPixmapCache):
             return self.find(self._thumb_dict[name])
         return None
 
-class TopLevelTreeItem(QtGui.QTreeWidgetItem):
+class TreeItem(QtGui.QTreeWidgetItem):
     def __init__(self, path, fields, column_names):
-        super(TopLevelTreeItem, self).__init__()
+        super(TreeItem, self).__init__()
         self._fields = fields
         self._path = path
         self._column_names = column_names
+        self._item_expanded = False
+        
+        if 'templates' in self._fields.keys():
+            self.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
 
-        self.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
         self.setText(self._column_names.index_name('name'), os.path.basename(self._path).split('.')[0])
         self.setText(self._column_names.index_name('ver'), str(fields['version']).zfill(3))
         self.setText(self._column_names.index_name('type'), self._path.split('.')[-1])
@@ -411,16 +455,32 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
         date_time = datetime.utcfromtimestamp(time).strftime('%Y-%m-%d %H:%M:%S')
         self.setText(self._column_names.index_name('modif'), date_time)
 
+    def _create_child_item(self, path, fields):
+        item = TreeItem(path, fields, self._column_names)
+        self.addChild(item)
+
     def get_path(self):
         return self._path
 
     def item_expand(self):
-        work_template = self._fields['templates']['work_template']
-        if work_template:
-            print work_template.apply_fields(self._fields)
+        if 'templates' in self._fields.keys() and not self._item_expanded:
+            work_template = self._fields['templates']['work_template']
+            if work_template:
+                path = work_template.apply_fields(self._fields)
+                fields = self._fields.copy()
+                fields.pop('templates', None)
+
+                self._create_child_item(path, fields)
         
-        preview_template = self._fields['templates']['preview_template']
-        if preview_template:
-            print preview_template.apply_fields(self._fields)
+            preview_template = self._fields['templates']['preview_template']
+            if preview_template:
+                path = preview_template.apply_fields(self._fields)
+                fields = self._fields.copy()
+                fields.pop('templates', None)
+
+                self._create_child_item(path, fields)
+
+            self._item_expanded = True
+
 
 
