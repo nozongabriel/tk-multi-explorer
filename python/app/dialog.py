@@ -5,6 +5,7 @@ from sgtk.platform.qt import QtCore, QtGui
 import os
 import sys
 from datetime import datetime
+import collections
 
 class AppDialog(QtGui.QWidget):
     @property
@@ -17,6 +18,8 @@ class AppDialog(QtGui.QWidget):
     def __init__(self, parent=None):
         # first, call the base class and let it do its thing.
         QtGui.QWidget.__init__(self, parent)
+
+        self.image_types = ('exr', 'jpg', 'dpx', 'png', 'tiff')
 
         # most of the useful accessors are available through the Application class instance
         # it is often handy to keep a reference to this. You can get it via the following method:
@@ -44,8 +47,7 @@ class AppDialog(QtGui.QWidget):
         title_lab = QtGui.QLabel('Project Explorer')
         refresh_but = QtGui.QPushButton()
         refresh_but.setFixedSize(25, 25)
-        icon = QtGui.QIcon(self._icon_manager.get_pixmap('refresh.png'))
-        refresh_but.setIcon(icon)
+        refresh_but.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('refresh')))
         refresh_but.clicked.connect(self._refresh)
         
         upper_bar.addWidget(title_lab)
@@ -113,6 +115,7 @@ class AppDialog(QtGui.QWidget):
 
         self._tree_widget.itemDoubleClicked.connect(self._tree_item_double_clicked)
         self._tree_widget.itemExpanded.connect(self._item_expanded)
+        self._tree_widget.itemClicked.connect(self._item_clicked)
 
         tree_layout.addWidget(self._search_bar)
         tree_layout.addWidget(self._tree_widget)
@@ -123,7 +126,78 @@ class AppDialog(QtGui.QWidget):
         # Detail layout
 
         splitter_detail_widget = QtGui.QWidget()
-        # splitter_detail_widget.setLayout(detail_layout)
+
+        detail_layout = QtGui.QVBoxLayout()
+        detail_layout.setAlignment(QtCore.Qt.AlignTop)
+        self._detail_icon = QtGui.QLabel()
+        self._detail_icon.setAlignment(QtCore.Qt.AlignHCenter)
+
+        # Actions
+        self._detail_copy_path = QtGui.QPushButton()
+        self._detail_copy_path.setFixedSize(25, 25)
+        self._detail_copy_path.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('clipboard')))
+        self._detail_copy_path.clicked.connect(self._detail_copy_path_clipboard)
+        self._detail_copy_path.setEnabled(False)
+
+        self._detail_open_images = QtGui.QPushButton()
+        self._detail_open_images.setFixedSize(25, 25)
+        self._detail_open_images.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('image')))
+        self._detail_open_images.clicked.connect(self._detail_open_rv)
+        self._detail_open_images.setEnabled(False)
+
+        self._detail_open_video = QtGui.QPushButton()
+        self._detail_open_video.setFixedSize(25, 25)
+        self._detail_open_video.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('video')))
+        self._detail_open_video.clicked.connect(self._detail_open_rv)
+        self._detail_open_video.setEnabled(False)
+
+        self._detail_open_nuke = QtGui.QPushButton()
+        self._detail_open_nuke.setFixedSize(25, 25)
+        self._detail_open_nuke.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('nuke')))
+        self._detail_open_nuke.setEnabled(False)
+        
+        self._detail_open_maya = QtGui.QPushButton()
+        self._detail_open_maya.setFixedSize(25, 25)
+        self._detail_open_maya.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('maya')))
+        self._detail_open_maya.setEnabled(False)
+
+        self._detail_open_hou = QtGui.QPushButton()
+        self._detail_open_hou.setFixedSize(25, 25)
+        self._detail_open_hou.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('houdini')))
+        self._detail_open_hou.setEnabled(False)
+
+        detail_buttons = QtGui.QHBoxLayout()
+        detail_buttons.addWidget(self._detail_copy_path)
+        detail_buttons.addWidget(self._detail_open_images)
+        detail_buttons.addWidget(self._detail_open_video)
+        detail_buttons.addWidget(self._detail_open_nuke)
+        detail_buttons.addWidget(self._detail_open_maya)
+        detail_buttons.addWidget(self._detail_open_hou)
+
+        self._detail_form_layout = QtGui.QFormLayout()
+
+        self._detail_dict = collections.OrderedDict([
+            ('Name', None),
+            ('Version', None),
+            ('Type', None),
+            ('Range', None),
+            ('Department', None),
+            ('Modified', None),
+            ('Path', None)
+        ])
+        
+        for key in self._detail_dict:
+            label = QtGui.QLabel()
+            label.setWordWrap(True)
+            self._detail_dict[key] = label
+
+            self._detail_form_layout.addRow(key, self._detail_dict[key])
+
+        detail_layout.addWidget(self._detail_icon)
+        detail_layout.addLayout(detail_buttons)
+        detail_layout.addLayout(self._detail_form_layout)
+
+        splitter_detail_widget.setLayout(detail_layout)
 
         main_splitter.addWidget(splitter_side_bar_widget)
         main_splitter.addWidget(splitter_tree_widget)
@@ -183,34 +257,100 @@ class AppDialog(QtGui.QWidget):
         self._fill_treewidget()
 
     def _tree_item_double_clicked(self, item, column):
-        path = item.get_path()
-
-        if path[-3:] == 'exr' or path[-3:] == 'jpg':
-            process = QtCore.QProcess(self)
-
-            # run the app
-            system = sys.platform
-            if system == "linux2":
-                program = 'rv'
-            elif system == 'win32':
-                program = 'C:/Program Files/Shotgun/RV-7.2.6/bin/rv.exe'
-            else:
-                msg = "Platform '%s' is not supported." % (system)
-                self._current_sgtk.log_error(msg)
-                return
-
-            process.startDetached(program, [path])
-            process.close()
+        if item.get_type() in self.image_types:
+            self._open_rv(item.get_path())
 
     def _item_expanded(self, item):
         new_items = item.item_expand()
 
+        # Set icons for new items or remove the expand indicator
         if new_items:
             for new_item in new_items:
                 self._set_item_icon(new_item)
         elif not item.childCount():
             item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.DontShowIndicator)
 
+    def _item_clicked(self, item, column):
+        # Check if it has more info
+        self._item_expanded(item)
+
+        # Set detail icon
+        thumb = self._get_icon_name(item.get_type())
+        pixmap = self._icon_manager.get_pixmap(thumb)
+        self._detail_icon.setPixmap(pixmap)
+
+        # Enable correct buttons
+        self._detail_copy_path.setEnabled(True)
+        self._detail_open_images.setEnabled(False)
+        self._detail_open_video.setEnabled(False)
+        self._detail_open_nuke.setEnabled(False)
+        self._detail_open_maya.setEnabled(False)
+        self._detail_open_hou.setEnabled(False)
+
+        items = [item]
+        for child_index in range(item.childCount()):
+            items.append(item.child(child_index))
+
+        for element in items:
+            element_type = element.get_type()
+
+            if element_type in self.image_types:
+                self._detail_open_images.setEnabled(True)
+            elif element_type == 'mov':
+                self._detail_open_video.setEnabled(True)
+            elif element_type == 'nk':
+                self._detail_open_nuke.setEnabled(True)
+            elif element_type == 'ma':
+                self._detail_open_maya.setEnabled(True)
+            elif element_type == 'hip':
+                self._detail_open_hou.setEnabled(True)
+
+        # Set detail Form
+        properties = item.get_properties()
+
+        for key in self._detail_dict:
+            if key.lower() in properties.keys():
+                # Replace path with slashes with slash and spaces for wordwrap to work
+                text = properties[key.lower()].replace(os.sep, '%s ' % os.sep)
+                self._detail_dict[key].setText(text)
+
+        # Set Range if needed
+        # to do check the sequence range
+        if '%04d' in item.get_path():
+            self._detail_dict['Range'].setText('Sequence')
+        else:
+            self._detail_dict['Range'].setText('Single')
+
+    def _detail_copy_path_clipboard(self):
+        clip_string = ''
+        for item in self._tree_widget.selectedItems():
+            clip_string += item.get_path()
+
+        if clip_string:
+            QtGui.QGuiApplication.clipboard().setText(clip_string)
+
+    def _detail_open_rv(self):
+        items = self._tree_widget.selectedItems()
+
+        if len(items) and items[0].get_type() in self.image_types:
+            self._open_rv(items[0].get_path())
+
+    def _open_rv(self, path):
+        process = QtCore.QProcess(self)
+
+        # run the app
+        system = sys.platform
+        if system == "linux2":
+            program = 'rv'
+        elif system == 'win32':
+            program = 'C:/Program Files/Shotgun/RV-7.2.6/bin/rv.exe'
+        else:
+            msg = "Platform '%s' is not supported." % (system)
+            self._current_sgtk.log_error(msg)
+            return
+
+        process.startDetached(program, [path])
+        process.close()
     ############################################################################
     # Public methods
 
@@ -221,29 +361,31 @@ class AppDialog(QtGui.QWidget):
 
     ############################################################################
     # Private methods
-    
-    def _set_item_icon(self, item):
-        ext = item.get_path().split('.')[-1]
+    def _get_icon_name(self, ext):
         thumb = None
         if ext == 'abc':
-            thumb = 'alembic.png'
+            thumb = 'alembic'
         elif ext == 'sc':
-            thumb = 'geometry.png'
+            thumb = 'geometry'
         elif ext == 'hip':
-            thumb = 'houdini.png'
-        elif ext == 'exr':
-            thumb = 'image.png'
+            thumb = 'houdini'
+        elif ext in self.image_types:
+            thumb = 'image'
         elif ext == 'ma':
-            thumb = 'maya.png'
+            thumb = 'maya'
         elif ext == 'nk':
-            thumb = 'nuke.png'
+            thumb = 'nuke'
         elif ext == 'obj':
-            thumb = 'obj.png'
+            thumb = 'obj'
         elif ext == 'vdb':
-            thumb = 'openvdb.png'
+            thumb = 'openvdb'
         elif ext == 'mov':
-            thumb = 'video.png'
+            thumb = 'video'
 
+        return thumb
+
+    def _set_item_icon(self, item):
+        thumb = self._get_icon_name(item.get_type())
         if thumb:
             pixmap = self._icon_manager.get_pixmap(thumb)
 
@@ -379,7 +521,7 @@ class CacheManager():
             template_dict = {'cache_template': cache_template, 'work_template': work_template, 'preview_template': preview_template}
 
             extension = cache_template.definition.split('.')[-1]
-            if extension == 'exr' or extension == 'jpg':
+            if extension in dialog.image_types:
                 self._2d_templates.append(template_dict)
             else:
                 self._3d_templates.append(template_dict)
@@ -433,10 +575,10 @@ class IconManager(QtGui.QPixmapCache):
         self._thumb_dict = {}
 
         thumb_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources"))
-        thumb_files = ['alembic.png', 'geometry.png', 'houdini.png', 'image.png', 'maya.png', 'nuke.png', 'obj.png', 'openvdb.png', 'refresh.png', 'video.png']
+        thumb_files = ['alembic', 'clipboard', 'geometry', 'houdini', 'image', 'maya', 'nuke', 'obj', 'openvdb', 'refresh', 'video']
 
         for thumb in thumb_files:
-            image = QtGui.QPixmap(os.path.join(thumb_path, thumb))
+            image = QtGui.QPixmap(os.path.join(thumb_path, '%s.png' % thumb))
             key = self.insert(image.scaledToHeight(self._label_height, QtCore.Qt.SmoothTransformation))
 
             self._thumb_dict[thumb] = key
@@ -450,30 +592,38 @@ class TreeItem(QtGui.QTreeWidgetItem):
     def __init__(self, path, fields, column_names):
         super(TreeItem, self).__init__()
         self._fields = fields
-        self._path = path
         self._column_names = column_names
         self._item_expanded = False
         
+        # Check if it can have children through templates
         if 'templates' in self._fields.keys():
             self.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
-
-        self.setText(self._column_names.index_name('name'), os.path.basename(self._path).split('.')[0])
-        self.setText(self._column_names.index_name('ver'), str(fields['version']).zfill(3))
-        self.setText(self._column_names.index_name('type'), self._path.split('.')[-1])
-        self.setText(self._column_names.index_name('depart'), str(fields['Step']))
-
+        
         # Last modified
-        time = os.path.getctime(os.path.dirname(self._path))
+        time = os.path.getctime(os.path.dirname(path))
         date_time = datetime.utcfromtimestamp(time).strftime('%Y-%m-%d %H:%M:%S')
-        self.setText(self._column_names.index_name('modif'), date_time)
+
+        # Set item properties
+        self._properties = {
+            'name': os.path.basename(path).split('.')[0],
+            'version': str(fields['version']).zfill(3),
+            'type': path.split('.')[-1],
+            'department': str(fields['Step']),
+            'modified': date_time,
+            'path': path
+        }
+
+        # Set GUI text columns
+        self.setText(self._column_names.index_name('name'), self._properties['name'])
+        self.setText(self._column_names.index_name('ver'), self._properties['version'])
+        self.setText(self._column_names.index_name('type'), self._properties['type'])
+        self.setText(self._column_names.index_name('depart'), self._properties['department'])
+        self.setText(self._column_names.index_name('modif'), self._properties['modified'])
 
     def _create_child_item(self, path, fields):
         item = TreeItem(path, fields, self._column_names)
         self.addChild(item)
         return item
-
-    def get_path(self):
-        return self._path
 
     def item_expand(self):
         if 'templates' in self._fields.keys() and not self._item_expanded:
@@ -497,3 +647,12 @@ class TreeItem(QtGui.QTreeWidgetItem):
 
             self._item_expanded = True
             return added_items
+
+    def get_path(self):
+        return self._properties['path']
+
+    def get_type(self):
+        return self._properties['type']
+
+    def get_properties(self):
+        return self._properties
