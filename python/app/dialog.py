@@ -203,7 +203,13 @@ class AppDialog(QtGui.QWidget):
             process.close()
 
     def _item_expanded(self, item):
-        item.item_expand()
+        new_items = item.item_expand()
+
+        if new_items:
+            for new_item in new_items:
+                self._set_item_icon(new_item)
+        elif not item.childCount():
+            item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.DontShowIndicator)
 
     ############################################################################
     # Public methods
@@ -223,14 +229,20 @@ class AppDialog(QtGui.QWidget):
             thumb = 'alembic.png'
         elif ext == 'sc':
             thumb = 'geometry.png'
+        elif ext == 'hip':
+            thumb = 'houdini.png'
         elif ext == 'exr':
             thumb = 'image.png'
+        elif ext == 'ma':
+            thumb = 'maya.png'
+        elif ext == 'nk':
+            thumb = 'nuke.png'
         elif ext == 'obj':
             thumb = 'obj.png'
-        elif ext == 'mov':
-            thumb = 'video.png'
         elif ext == 'vdb':
             thumb = 'openvdb.png'
+        elif ext == 'mov':
+            thumb = 'video.png'
 
         if thumb:
             pixmap = self._icon_manager.get_pixmap(thumb)
@@ -417,15 +429,15 @@ class CacheManager():
 class IconManager(QtGui.QPixmapCache):
     def __init__(self):
         super(IconManager, self).__init__()
-        self._label_height = 40
+        self._label_height = 25
         self._thumb_dict = {}
 
         thumb_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources"))
-        thumb_files = ['alembic.png', 'geometry.png', 'image.png', 'obj.png', 'video.png', 'openvdb.png', 'refresh.png']
+        thumb_files = ['alembic.png', 'geometry.png', 'houdini.png', 'image.png', 'maya.png', 'nuke.png', 'obj.png', 'openvdb.png', 'refresh.png', 'video.png']
 
         for thumb in thumb_files:
             image = QtGui.QPixmap(os.path.join(thumb_path, thumb))
-            key = self.insert(image.scaledToHeight(self._label_height, QtCore.Qt.FastTransformation))
+            key = self.insert(image.scaledToHeight(self._label_height, QtCore.Qt.SmoothTransformation))
 
             self._thumb_dict[thumb] = key
 
@@ -458,19 +470,22 @@ class TreeItem(QtGui.QTreeWidgetItem):
     def _create_child_item(self, path, fields):
         item = TreeItem(path, fields, self._column_names)
         self.addChild(item)
+        return item
 
     def get_path(self):
         return self._path
 
     def item_expand(self):
         if 'templates' in self._fields.keys() and not self._item_expanded:
+            added_items = []
+
             work_template = self._fields['templates']['work_template']
             if work_template:
                 path = work_template.apply_fields(self._fields)
                 fields = self._fields.copy()
                 fields.pop('templates', None)
 
-                self._create_child_item(path, fields)
+                added_items.append(self._create_child_item(path, fields))
         
             preview_template = self._fields['templates']['preview_template']
             if preview_template:
@@ -478,9 +493,7 @@ class TreeItem(QtGui.QTreeWidgetItem):
                 fields = self._fields.copy()
                 fields.pop('templates', None)
 
-                self._create_child_item(path, fields)
+                added_items.append(self._create_child_item(path, fields))
 
             self._item_expanded = True
-
-
-
+            return added_items
