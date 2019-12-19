@@ -36,6 +36,13 @@ class AppDialog(QtGui.QWidget):
         self._fill_projects()
         self._fill_filters()
 
+        # Load async icon loader
+        self._icon_loader = LoadIcons(self._tree_widget, self._icon_manager, self._column_names, self.image_types)
+        self._icon_thread = QtCore.QThread()
+        self._icon_loader.moveToThread(self._icon_thread)
+
+        self._icon_thread.started.connect(self._icon_loader.start_icon_loop)
+
     ############################################################################
     # UI methods
 
@@ -235,12 +242,27 @@ class AppDialog(QtGui.QWidget):
             # Get caches
             self._cache_manager.get_caches(current_item.text(), steps, type_filter, self._search_bar.text())
             
-            # self._set_item_icons(self._tree_widget.invisibleRootItem())
-            self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
+            if self._icon_thread.isRunning():
+                self._icon_thread.quit()
+            self._icon_thread.start()
 
     def _refresh(self):
-        self._cache_manager.clear_cache()
+        # Reset Detail Tab
+        self._detail_icon.setPixmap(None)
+
+        self._detail_copy_path.setEnabled(False)
+        self._detail_open_images.setEnabled(False)
+        self._detail_open_video.setEnabled(False)
+        self._detail_open_nuke.setEnabled(False)
+        self._detail_open_maya.setEnabled(False)
+        self._detail_open_hou.setEnabled(False)
+
+        for key in self._detail_dict:
+            self._detail_dict[key].setText('')
+
+        # Reset Tree Widget
         self._tree_widget.invisibleRootItem().takeChildren()
+        self._cache_manager.clear_cache()
         self._fill_treewidget()
 
     def _select_all_filters(self):
@@ -269,7 +291,7 @@ class AppDialog(QtGui.QWidget):
         # Set icons for new items or remove the expand indicator
         if new_items:
             for new_item in new_items:
-                self._set_item_icon(new_item)
+                self._icon_loader.set_item_icon(new_item)
         elif not item.childCount():
             item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.DontShowIndicator)
 
@@ -278,9 +300,11 @@ class AppDialog(QtGui.QWidget):
         self._item_expanded(item)
 
         # Set detail icon
-        thumb = self._get_icon_name(item.get_type())
-        pixmap = self._icon_manager.get_pixmap(thumb)
-        self._detail_icon.setPixmap(pixmap)
+        current_icon = item.icon(self._column_names.index_name('thumb'))
+        if current_icon:
+            thumb = self._icon_loader.get_icon_name(item.get_type())
+            if thumb:
+                self._detail_icon.setPixmap(self._icon_manager.get_pixmap(thumb))
 
         # Enable correct buttons
         self._detail_copy_path.setEnabled(True)
@@ -363,48 +387,6 @@ class AppDialog(QtGui.QWidget):
 
     ############################################################################
     # Private methods
-
-    def _set_item_icons(self, item):
-        for child_index in range(item.childCount()):
-            child = item.child(child_index)
-            self._set_item_icon(child)
-
-            if child.childCount():
-                self._set_item_icons(child)
-
-    def _get_icon_name(self, ext):
-        thumb = None
-        if ext == 'abc':
-            thumb = 'alembic'
-        elif ext == 'sc':
-            thumb = 'geometry'
-        elif ext == 'hip':
-            thumb = 'houdini'
-        elif ext in self.image_types:
-            thumb = 'image'
-        elif ext == 'ma':
-            thumb = 'maya'
-        elif ext == 'nk':
-            thumb = 'nuke'
-        elif ext == 'obj':
-            thumb = 'obj'
-        elif ext == 'vdb':
-            thumb = 'openvdb'
-        elif ext == 'mov':
-            thumb = 'video'
-
-        return thumb
-
-    def _set_item_icon(self, item):
-        thumb = self._get_icon_name(item.get_type())
-        if thumb:
-            pixmap = self._icon_manager.get_pixmap(thumb)
-
-            thumbnail = QtGui.QLabel("", self._tree_widget)
-            thumbnail.setAlignment(QtCore.Qt.AlignHCenter)
-            thumbnail.setPixmap(pixmap)
-            self._tree_widget.setItemWidget(item, self._column_names.index_name('thumb'), thumbnail)
-            self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
     
     def _fill_projects(self):
         self._project_combo.clear()
@@ -680,3 +662,54 @@ class TreeItem(QtGui.QTreeWidgetItem):
 
     def get_properties(self):
         return self._properties
+
+class LoadIcons(QtCore.QObject):
+    def __init__(self, tree_widget, icon_manager, column_names, image_types):
+        super(LoadIcons, self).__init__()
+
+        self._tree_widget = tree_widget
+        self._icon_manager = icon_manager
+        self._column_names = column_names
+        self._image_types = image_types
+
+    def start_icon_loop(self):
+        self._set_icons(self._tree_widget.invisibleRootItem())
+        self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
+
+    def get_icon_name(self, ext):
+        thumb = None
+        if ext == 'abc':
+            thumb = 'alembic'
+        elif ext == 'sc':
+            thumb = 'geometry'
+        elif ext == 'hip':
+            thumb = 'houdini'
+        elif ext in self._image_types:
+            thumb = 'image'
+        elif ext == 'ma':
+            thumb = 'maya'
+        elif ext == 'nk':
+            thumb = 'nuke'
+        elif ext == 'obj':
+            thumb = 'obj'
+        elif ext == 'vdb':
+            thumb = 'openvdb'
+        elif ext == 'mov':
+            thumb = 'video'
+
+        return thumb
+
+    def set_item_icon(self, item):
+        current_icon = item.icon(self._column_names.index_name('thumb'))
+        if not current_icon:
+            thumb = self.get_icon_name(item.get_type())
+            if thumb:
+                item.setIcon(self._column_names.index_name('thumb'), QtGui.QIcon(self._icon_manager.get_pixmap(thumb)))
+
+    def _set_icons(self, item):
+        for child_index in range(item.childCount()):
+            child = item.child(child_index)
+
+            self.set_item_icon(child)
+            if child.childCount():
+                self._set_icons(child)
