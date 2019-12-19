@@ -27,7 +27,7 @@ class AppDialog(QtGui.QWidget):
 
         # Get all Managers
         self._column_names = ColumnNames()
-        self._cache_manager = CacheManager(self, self._current_sgtk)
+        self._cache_manager = CacheManager(self, self._current_sgtk, self._column_names)
         self._project_manager = ProjectManager(self._current_sgtk)
         self._icon_manager = IconManager()
 
@@ -218,26 +218,29 @@ class AppDialog(QtGui.QWidget):
         self._shot_list_widget.addItems(shots)
 
     def _fill_treewidget(self):
-        self._tree_widget.invisibleRootItem().takeChildren()
+        current_item = self._shot_list_widget.currentItem()
 
-        # Filters
-        steps = {}
-        for index in range(self._step_list_widget.count()):
-            item = self._step_list_widget.item(index)
-            steps[item.text()] = bool(item.checkState())
-        
-        type_filter = {}
-        for index in range(self._type_list_widget.count()):
-            item = self._type_list_widget.item(index)
-            type_filter[item.text()] = bool(item.checkState())
+        if current_item:
+            # Filters
+            steps = {}
+            for index in range(self._step_list_widget.count()):
+                item = self._step_list_widget.item(index)
+                steps[item.text()] = bool(item.checkState())
+            
+            type_filter = {}
+            for index in range(self._type_list_widget.count()):
+                item = self._type_list_widget.item(index)
+                type_filter[item.text()] = bool(item.checkState())
 
-        # Get caches
-        self._cache_manager.get_caches(self._shot_list_widget.currentItem().text(), steps, type_filter, self._search_bar.text())
-
-        self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
+            # Get caches
+            self._cache_manager.get_caches(current_item.text(), steps, type_filter, self._search_bar.text())
+            
+            # self._set_item_icons(self._tree_widget.invisibleRootItem())
+            self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
     def _refresh(self):
         self._cache_manager.clear_cache()
+        self._tree_widget.invisibleRootItem().takeChildren()
         self._fill_treewidget()
 
     def _select_all_filters(self):
@@ -351,16 +354,24 @@ class AppDialog(QtGui.QWidget):
 
         process.startDetached(program, [path])
         process.close()
+    
     ############################################################################
     # Public methods
 
-    def add_item_to_tree(self, cache_dict):
-        item = TreeItem(cache_dict['path'], cache_dict['fields'], self._column_names)
+    def add_item_to_tree(self, item):
         self._tree_widget.addTopLevelItem(item)
-        self._set_item_icon(item)
 
     ############################################################################
     # Private methods
+
+    def _set_item_icons(self, item):
+        for child_index in range(item.childCount()):
+            child = item.child(child_index)
+            self._set_item_icon(child)
+
+            if child.childCount():
+                self._set_item_icons(child)
+
     def _get_icon_name(self, ext):
         thumb = None
         if ext == 'abc':
@@ -394,7 +405,7 @@ class AppDialog(QtGui.QWidget):
             thumbnail.setPixmap(pixmap)
             self._tree_widget.setItemWidget(item, self._column_names.index_name('thumb'), thumbnail)
             self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
-
+    
     def _fill_projects(self):
         self._project_combo.clear()
 
@@ -499,12 +510,13 @@ class ProjectManager():
         return self._projects.keys()
 
 class CacheManager():
-    def __init__(self, dialog, app):
+    def __init__(self, dialog, app, column_names):
         self._dialog = dialog
         self._app = app
+        self._column_names = column_names
 
-        self._2d_cache_dict = {}
-        self._3d_cache_dict = {}
+        self._2d_item_dict = {}
+        self._3d_item_dict = {}
 
         self._2d_templates = []
         self._3d_templates = []
@@ -521,35 +533,45 @@ class CacheManager():
             template_dict = {'cache_template': cache_template, 'work_template': work_template, 'preview_template': preview_template}
 
             extension = cache_template.definition.split('.')[-1]
-            if extension in dialog.image_types:
+            if extension in self._dialog.image_types:
                 self._2d_templates.append(template_dict)
             else:
                 self._3d_templates.append(template_dict)
 
+    ############################################################################
+    # Public methods
+
     def clear_cache(self):
-        self._2d_cache_dict.clear()
-        self._3d_cache_dict.clear()
+        self._2d_item_dict.clear()
+        self._3d_item_dict.clear()
 
     def get_caches(self, shot, step_filters, type_filters, search_text):
         for step, enabled in step_filters.items():
-            if enabled:
-                ui_fields = {
+            ui_fields = {
                 'Shot': shot,
                 'Step': step}
-                
-                if type_filters['2D']:
-                    if step in self._2d_cache_dict:
-                        self._add_cached_cache_to_gui(self._2d_cache_dict[step], search_text)
-                    else:
-                        self._2d_cache_dict[step] = self._caches_from_templates(self._2d_templates, ui_fields, search_text)
-                if type_filters['3D']:
-                    if step in self._3d_cache_dict:
-                        self._add_cached_cache_to_gui(self._3d_cache_dict[step], search_text)
-                    else:
-                        self._3d_cache_dict[step] = self._caches_from_templates(self._3d_templates, ui_fields, search_text)
-                    
+            
+            if enabled and type_filters['2D']:
+                if step in self._2d_item_dict:
+                    self._set_hidden(False, self._2d_item_dict[step], search_text)
+                elif enabled:
+                    self._2d_item_dict[step] = self._caches_from_templates(self._2d_templates, ui_fields, search_text)
+            elif step in self._2d_item_dict:
+                self._set_hidden(True, self._2d_item_dict[step], search_text)
+
+            if enabled and type_filters['3D']:
+                if step in self._3d_item_dict:
+                    self._set_hidden(False, self._3d_item_dict[step], search_text)
+                elif enabled:
+                    self._3d_item_dict[step] = self._caches_from_templates(self._3d_templates, ui_fields, search_text)
+            elif step in self._3d_item_dict:
+                self._set_hidden(True, self._3d_item_dict[step], search_text)
+    
+    ############################################################################
+    # Private methods
+
     def _caches_from_templates(self, templates, ui_fields, search_text):
-        caches = []
+        items = []
         for template_dict in templates:
             template = template_dict['cache_template']
             cache_paths = self._app.sgtk.abstract_paths_from_template(template, ui_fields)
@@ -557,16 +579,18 @@ class CacheManager():
                 fields = template.get_fields(cache_path)
                 fields['templates'] = template_dict
 
-                new_cache_dict = {'path': cache_path, 'fields': fields}
-                caches.append(new_cache_dict)
+                item = TreeItem(cache_path, fields, self._column_names)
+                items.append(item)
                 if not search_text or (search_text and search_text in cache_path):
-                    self._dialog.add_item_to_tree(new_cache_dict)
-        return caches
+                    self._dialog.add_item_to_tree(item)
+        return items
     
-    def _add_cached_cache_to_gui(self, cache_dict, search_text):
-        for cache in cache_dict:
-            if not search_text or (search_text and search_text in cache['path']):
-                self._dialog.add_item_to_tree(cache)
+    def _set_hidden(self, hidden, cache_dict, search_text):
+        for item in cache_dict:
+            if not hidden or (not hidden and search_text not in item.get_path()):
+                item.setHidden(False)
+            else:
+                item.setHidden(True)
 
 class IconManager(QtGui.QPixmapCache):
     def __init__(self):
