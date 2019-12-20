@@ -4,8 +4,10 @@ from sgtk.platform.qt import QtCore, QtGui
 
 import os
 import sys
+import pyseq
 from datetime import datetime
 import collections
+import glob
 
 class AppDialog(QtGui.QWidget):
     @property
@@ -243,7 +245,7 @@ class AppDialog(QtGui.QWidget):
             self._cache_manager.get_caches(current_item.text(), steps, type_filter, self._search_bar.text())
             
             if self._icon_thread.isRunning():
-                self._icon_thread.quit()
+                self._icon_thread.terminate()
             self._icon_thread.start()
 
     def _refresh(self):
@@ -344,7 +346,16 @@ class AppDialog(QtGui.QWidget):
         # Set Range if needed
         # to do check the sequence range
         if '%04d' in item.get_path():
-            self._detail_dict['Range'].setText('Sequence')
+            cache_range = 'Invalid Sequence Object!'
+            sequences = pyseq.get_sequences(item.get_path().replace('%04d', '*'))
+            if len(sequences):
+                sequence = sequences[0]
+
+                if sequence.missing():
+                    cache_range = '[%s-%s], missing %s' % (sequence.format('%s'), sequence.format('%e'), sequence.format('%m'))
+                else:
+                    cache_range = sequence.format('%R')
+            self._detail_dict['Range'].setText(cache_range)
         else:
             self._detail_dict['Range'].setText('Single')
 
@@ -424,7 +435,7 @@ class AppDialog(QtGui.QWidget):
 
             self._type_list_widget.addItem(check_box)
 
-        self._type_list_widget.setFixedHeight(35)
+        self._type_list_widget.setFixedHeight(len(type_list) * 20)
     
 class ColumnNames():
     def __init__(self):
@@ -560,11 +571,13 @@ class CacheManager():
             for cache_path in cache_paths:
                 fields = template.get_fields(cache_path)
                 fields['templates'] = template_dict
-
-                item = TreeItem(cache_path, fields, self._column_names)
-                items.append(item)
-                if not search_text or (search_text and search_text in cache_path):
-                    self._dialog.add_item_to_tree(item)
+                
+                # Check if valid cache (remove duplicates when checking with templates that have and don't have {SEQ} key)
+                if ('%04d' in cache_path and len(glob.glob(cache_path.replace('%04d', '*')))) or os.path.exists(cache_path):
+                    item = TreeItem(cache_path, fields, self._column_names)
+                    items.append(item)
+                    if not search_text or (search_text and search_text in cache_path):
+                        self._dialog.add_item_to_tree(item)
         return items
     
     def _set_hidden(self, hidden, cache_dict, search_text):
@@ -675,6 +688,7 @@ class LoadIcons(QtCore.QObject):
     def start_icon_loop(self):
         self._set_icons(self._tree_widget.invisibleRootItem())
         self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
+        self.thread().terminate()
 
     def get_icon_name(self, ext):
         thumb = None
