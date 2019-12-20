@@ -30,12 +30,11 @@ class AppDialog(QtGui.QWidget):
         # Get all Managers
         self._column_names = ColumnNames()
         self._cache_manager = CacheManager(self, self._current_sgtk, self._column_names)
-        self._project_manager = ProjectManager(self._current_sgtk)
         self._icon_manager = IconManager()
 
         # Setup UI
         self._setup_ui()
-        self._fill_projects()
+        self._fill_shots()
         self._fill_filters()
 
         # Load async icon loader
@@ -44,7 +43,7 @@ class AppDialog(QtGui.QWidget):
         self._icon_loader.moveToThread(self._icon_thread)
 
         self._icon_thread.started.connect(self._icon_loader.start_icon_loop)
-
+        
     ############################################################################
     # UI methods
 
@@ -66,8 +65,7 @@ class AppDialog(QtGui.QWidget):
         main_splitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
         side_bar = QtGui.QVBoxLayout()
 
-        self._project_combo = QtGui.QComboBox()
-        self._project_combo.currentIndexChanged.connect(self._change_project)
+        project_label = QtGui.QLabel(self._current_sgtk.context.project['name'])
 
         self._shot_list_widget = QtGui.QListWidget()
         self._shot_list_widget.itemClicked.connect(self._refresh)
@@ -90,7 +88,7 @@ class AppDialog(QtGui.QWidget):
         self._type_list_widget = QtGui.QListWidget()
         self._type_list_widget.itemChanged.connect(self._fill_treewidget)
 
-        side_bar.addWidget(self._project_combo)
+        side_bar.addWidget(project_label)
         side_bar.addWidget(self._shot_list_widget)
         side_bar.addWidget(filter_widget)
         side_bar.addWidget(self._step_list_widget)
@@ -217,14 +215,6 @@ class AppDialog(QtGui.QWidget):
         self.setLayout(QtGui.QVBoxLayout())
         self.layout().addLayout(upper_bar)
         self.layout().addWidget(main_splitter)
-
-    def _change_project(self):
-        self._shot_list_widget.clear()
-        current_project = self._project_combo.currentText()
-        
-        shots = self._project_manager.get_new_project(current_project)
-        shots.sort()
-        self._shot_list_widget.addItems(shots)
 
     def _fill_treewidget(self):
         current_item = self._shot_list_widget.currentItem()
@@ -407,14 +397,16 @@ class AppDialog(QtGui.QWidget):
     ############################################################################
     # Private methods
     
-    def _fill_projects(self):
-        self._project_combo.clear()
+    def _fill_shots(self):
+        current_project = self._current_sgtk.context.project['name']
+        shotgun_shots = self._current_sgtk.shotgun.find("Shot", [['project.Project.name', 'is', current_project]], ['code'])
 
-        projects = self._project_manager.get_projects()
-        projects.sort()
+        shots = []
+        for shot in shotgun_shots:
+            shots.append(shot['code'])
+        shots.sort()
 
-        self._project_combo.addItems(projects)
-        self._project_combo.setCurrentText(self._project_manager.get_current_project())
+        self._shot_list_widget.addItems(shots)
 
     def _fill_filters(self):
         # Step List
@@ -455,60 +447,6 @@ class ColumnNames():
         return self._nice_names[self._prog_names.index(name)]
     def get_nice_names(self):
         return self._nice_names
-
-class ProjectManager():
-    def __init__(self, app):
-        self._current_sgtk = app
-        
-        # Only works when a context is available!
-        self._current_project = self._current_sgtk.context.project['name']
-
-        # Toolkit Manager
-        # sa = sgtk.authentication.ShotgunAuthenticator()
-        # current_user = sa.get_user()
-        # self._tk_manager = sgtk.bootstrap.ToolkitManager(current_user)
-
-        # Get all Projects
-        self._projects = {}
-        for project in self._current_sgtk.shotgun.find('Project', [], ['name']):
-            project_name = project['name']
-            project.pop('name', None)
-            
-            self._projects[project_name] = project
-
-    def get_new_project(self, current_project):
-        # Just find the new shots (this should be changed by changing the toolkit object, sent mail to support)
-        shotgun_shots = self._current_sgtk.shotgun.find("Shot", [['project.Project.name', 'is', current_project]], ['code'])
-
-        shots = []
-        for shot in shotgun_shots:
-            shots.append(shot['code'])
-
-        return shots
-
-        # config = self._tk_manager.get_pipeline_configurations(self._projects[current_project])
-        # if len(config) and 'descriptor' in config[0].keys():
-        #     descriptor = config[0]['descriptor']
-
-        #     self._current_sgtk = sgtk.sgtk_from_path(descriptor.get_path())
-
-        #     shotgun_shots = self._current_sgtk.shotgun.find("Shot", [['project.Project.name', 'is', current_project]], ['code'])
-
-        #     shots = []
-        #     for shot in shotgun_shots:
-        #         shots.append(shot['code'])
-
-        #     self._current_project = current_project
-        #     return shots
-        # else:
-        #     self._current_sgtk.log_error('Could not find sgtk config for %s' % self._projects[current_project])
-        #     return None
-    
-    def get_current_project(self):
-        return self._current_project
-
-    def get_projects(self):
-        return self._projects.keys()
 
 class CacheManager():
     def __init__(self, dialog, app, column_names):
