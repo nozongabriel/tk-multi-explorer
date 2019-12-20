@@ -134,6 +134,7 @@ class AppDialog(QtGui.QWidget):
         # Detail layout
 
         splitter_detail_widget = QtGui.QWidget()
+        splitter_detail_widget.setMinimumWidth(250)
 
         detail_layout = QtGui.QVBoxLayout()
         detail_layout.setAlignment(QtCore.Qt.AlignTop)
@@ -204,7 +205,7 @@ class AppDialog(QtGui.QWidget):
         detail_layout.addWidget(self._detail_icon)
         detail_layout.addLayout(detail_buttons)
         detail_layout.addLayout(self._detail_form_layout)
-
+        
         splitter_detail_widget.setLayout(detail_layout)
 
         main_splitter.addWidget(splitter_side_bar_widget)
@@ -293,6 +294,7 @@ class AppDialog(QtGui.QWidget):
         if new_items:
             for new_item in new_items:
                 self._icon_loader.set_item_icon(new_item)
+            self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
         elif not item.childCount():
             item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.DontShowIndicator)
 
@@ -342,7 +344,11 @@ class AppDialog(QtGui.QWidget):
         for key in self._detail_dict:
             if key.lower() in properties.keys():
                 # Replace path with slashes with slash and spaces for wordwrap to work
-                text = properties[key.lower()].replace(os.sep, '%s ' % os.sep)
+                text = properties[key.lower()]
+                text_parts = text.split(os.sep)
+                text_parts = text_parts[-4:]
+                text = os.sep.join(text_parts).replace(os.sep, '%s ' % os.sep)
+                text = text.replace('_', ' _')
                 self._detail_dict[key].setText(text)
 
         # Set Range if needed
