@@ -115,7 +115,6 @@ class AppDialog(QtGui.QWidget):
         self._tree_widget.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.SingleSelection)
         self._tree_widget.header().setSectionsMovable(False)
         self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
-        self._tree_widget.header().setMinimumSectionSize(100)
 
         self._tree_widget.setSortingEnabled(True)
         self._tree_widget.header().setSortIndicatorShown(True)
@@ -298,6 +297,9 @@ class AppDialog(QtGui.QWidget):
             item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.DontShowIndicator)
 
     def _item_clicked(self, item, column):
+        if not isinstance(item, TreeItem):
+            item = item.get_latest_child()
+
         # Check if it has more info
         self._item_expanded(item)
 
@@ -567,24 +569,37 @@ class CacheManager():
         items = []
         for template_dict in templates:
             template = template_dict['cache_template']
+
             cache_paths = self._app.sgtk.abstract_paths_from_template(template, ui_fields)
+            cache_paths.sort()
+            top_level_item = None
             for cache_path in cache_paths:
                 fields = template.get_fields(cache_path)
                 fields['templates'] = template_dict
+
+                fields_no_ver = fields.copy()
+                fields_no_ver.pop('version', None)
+
+                if not top_level_item or top_level_item.get_generic_fields() != fields_no_ver:
+                    # Only add top level item if it has children
+                    if top_level_item and top_level_item.childCount():
+                        top_level_item.post_process()
+                        self._dialog.add_item_to_tree(top_level_item)
+                        items.append(top_level_item)
+                        
+                    top_level_item = TopLevelTreeItem(cache_path, fields_no_ver, self._column_names)
                 
                 # Check if valid cache (remove duplicates when checking with templates that have and don't have {SEQ} key)
                 if ('%04d' in cache_path and len(glob.glob(cache_path.replace('%04d', '*')))) or os.path.exists(cache_path):
                     item = TreeItem(cache_path, fields, self._column_names)
-                    items.append(item)
-                    if not search_text or (search_text and search_text in cache_path):
-                        self._dialog.add_item_to_tree(item)
+                    top_level_item.addChild(item)
         return items
     
     def _set_hidden(self, hidden, cache_dict, search_text):
         for item in cache_dict:
-            if not hidden or (not hidden and search_text not in item.get_path()):
-                item.setHidden(False)
-            else:
+            item.setHidden(hidden)
+            
+            if search_text and search_text not in item.get_path().lower():
                 item.setHidden(True)
 
 class IconManager(QtGui.QPixmapCache):
@@ -607,11 +622,49 @@ class IconManager(QtGui.QPixmapCache):
             return self.find(self._thumb_dict[name])
         return None
 
-class TreeItem(QtGui.QTreeWidgetItem):
+class TopLevelTreeItem(QtGui.QTreeWidgetItem):
     def __init__(self, path, fields, column_names):
-        super(TreeItem, self).__init__()
+        super(TopLevelTreeItem, self).__init__()
         self._fields = fields
         self._column_names = column_names
+
+    def post_process(self):
+        children = []
+        for child_index in range(self.childCount()):
+            children.append(self.child(child_index))
+        children = sorted(children, key=lambda k: k.get_properties()['version']) 
+
+        self._latest_child = children[-1]
+        child_properties = self._latest_child.get_properties()
+
+        # Set GUI text columns
+        self.setText(self._column_names.index_name('name'), child_properties['name'][:-5])
+        self.setText(self._column_names.index_name('ver'), child_properties['version'])
+        self.setText(self._column_names.index_name('type'), child_properties['type'])
+        self.setText(self._column_names.index_name('depart'), child_properties['department'])
+        self.setText(self._column_names.index_name('modif'), child_properties['modified'])
+
+    def get_latest_child(self):
+        return self._latest_child
+
+    def get_generic_fields(self):
+        return self._fields
+
+    def item_expand(self):
+        pass
+
+    def get_path(self):
+        return self._latest_child.get_path()
+
+    def get_type(self):
+        return self._latest_child.get_type()
+
+    def get_properties(self):
+        return self._latest_child.get_properties()
+
+class TreeItem(TopLevelTreeItem):
+    def __init__(self, path, fields, column_names):
+        super(TreeItem, self).__init__(path, fields, column_names)
         self._item_expanded = False
         
         # Check if it can have children through templates
