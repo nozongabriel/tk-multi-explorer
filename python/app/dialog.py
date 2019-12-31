@@ -42,7 +42,7 @@ class AppDialog(QtGui.QWidget):
         self._icon_thread = QtCore.QThread()
         self._icon_loader.moveToThread(self._icon_thread)
 
-        self._icon_thread.started.connect(self._icon_loader.start_icon_loop)
+        self._icon_thread.started.connect(self._icon_loader.set_thread_child_icons)
         
     ############################################################################
     # UI methods
@@ -278,14 +278,13 @@ class AppDialog(QtGui.QWidget):
             self._open_rv(item.get_path())
 
     def _item_expanded(self, item):
-        new_items = item.item_expand()
+        item.item_expand()
 
         # Set icons for new items or remove the expand indicator
-        if new_items:
-            for new_item in new_items:
-                self._icon_loader.set_item_icon(new_item)
-            self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
-        elif not item.childCount():
+        self._icon_loader.set_icons(item)
+        self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
+        
+        if not item.childCount():
             item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.DontShowIndicator)
 
     def _item_clicked(self, item, column):
@@ -643,15 +642,13 @@ class TreeItem(TopLevelTreeItem):
 
     def item_expand(self):
         if 'templates' in self._fields.keys() and not self._item_expanded:
-            added_items = []
-
             work_template = self._fields['templates']['work_template']
             if work_template:
                 path = work_template.apply_fields(self._fields)
                 fields = self._fields.copy()
                 fields.pop('templates', None)
 
-                added_items.append(self._create_child_item(path, fields))
+                self._create_child_item(path, fields)
         
             preview_template = self._fields['templates']['preview_template']
             if preview_template:
@@ -659,10 +656,9 @@ class TreeItem(TopLevelTreeItem):
                 fields = self._fields.copy()
                 fields.pop('templates', None)
 
-                added_items.append(self._create_child_item(path, fields))
+                self._create_child_item(path, fields)
 
             self._item_expanded = True
-            return added_items
 
     def get_path(self):
         return self._properties['path']
@@ -682,8 +678,15 @@ class LoadIcons(QtCore.QObject):
         self._column_names = column_names
         self._image_types = image_types
 
-    def start_icon_loop(self):
-        self._set_icons(self._tree_widget.invisibleRootItem())
+    def _set_item_icon(self, item):
+        current_icon = item.icon(self._column_names.index_name('thumb'))
+        if not current_icon:
+            thumb = self.get_icon_name(item.get_type())
+            if thumb:
+                item.setIcon(self._column_names.index_name('thumb'), QtGui.QIcon(self._icon_manager.get_pixmap(thumb)))
+
+    def set_thread_child_icons(self):
+        self.set_icons(self._tree_widget.invisibleRootItem())
         self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
         self.thread().terminate()
 
@@ -710,17 +713,8 @@ class LoadIcons(QtCore.QObject):
 
         return thumb
 
-    def set_item_icon(self, item):
-        current_icon = item.icon(self._column_names.index_name('thumb'))
-        if not current_icon:
-            thumb = self.get_icon_name(item.get_type())
-            if thumb:
-                item.setIcon(self._column_names.index_name('thumb'), QtGui.QIcon(self._icon_manager.get_pixmap(thumb)))
-
-    def _set_icons(self, item):
+    def set_icons(self, item):
         for child_index in range(item.childCount()):
             child = item.child(child_index)
 
-            self.set_item_icon(child)
-            if child.childCount():
-                self._set_icons(child)
+            self._set_item_icon(child)
