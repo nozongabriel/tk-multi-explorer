@@ -27,22 +27,20 @@ class AppDialog(QtGui.QWidget):
         # it is often handy to keep a reference to this. You can get it via the following method:
         self._current_sgtk = sgtk.platform.current_bundle()
 
-        # Get all Managers
+        # Get Managers
         self._column_names = ColumnNames()
+        self._icon_manager = IconManager(self._column_names, self.image_types)
+
         self._cache_manager = CacheManager(self, self._current_sgtk, self._column_names)
-        self._icon_manager = IconManager()
+        self._cache_thread = QtCore.QThread()
+        self._cache_manager.moveToThread(self._cache_thread)
+
+        self._cache_thread.started.connect(self._cache_manager.get_caches)
 
         # Setup UI
         self._setup_ui()
         self._fill_shots()
         self._fill_filters()
-
-        # Load async icon loader
-        self._icon_loader = LoadIcons(self._tree_widget, self._icon_manager, self._column_names, self.image_types)
-        self._icon_thread = QtCore.QThread()
-        self._icon_loader.moveToThread(self._icon_thread)
-
-        self._icon_thread.started.connect(self._icon_loader.set_thread_child_icons)
         
     ############################################################################
     # UI methods
@@ -68,7 +66,7 @@ class AppDialog(QtGui.QWidget):
         project_label = QtGui.QLabel(self._current_sgtk.context.project['name'])
 
         self._shot_list_widget = QtGui.QListWidget()
-        self._shot_list_widget.itemClicked.connect(self._refresh)
+        self._shot_list_widget.currentItemChanged.connect(self._shot_selected)
 
         filter_widget = QtGui.QLabel('Filters')
         
@@ -232,11 +230,15 @@ class AppDialog(QtGui.QWidget):
                 type_filter[item.text()] = bool(item.checkState())
 
             # Get caches
-            self._cache_manager.get_caches(current_item.text(), steps, type_filter, self._search_bar.text())
-            
-            if self._icon_thread.isRunning():
-                self._icon_thread.terminate()
-            self._icon_thread.start()
+            self._cache_manager.set_thread_variables(current_item.text(), steps, type_filter, self._search_bar.text())
+
+            if not self._cache_thread.isRunning():
+                self._cache_thread.start()
+
+    def _shot_selected(self, current_item, previous_item):
+        if self._cache_thread.isRunning():
+            self._cache_thread.terminate()
+        self._refresh()
 
     def _refresh(self):
         # Reset Detail Tab
@@ -280,10 +282,11 @@ class AppDialog(QtGui.QWidget):
     def _item_expanded(self, item):
         item.item_expand()
 
-        # Set icons for new items or remove the expand indicator
-        self._icon_loader.set_icons(item)
+        # Set icons for new items
+        self._icon_manager.set_icons(item)
         self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
         
+        # Remove the expand indicator
         if not item.childCount():
             item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.DontShowIndicator)
 
@@ -297,7 +300,7 @@ class AppDialog(QtGui.QWidget):
         # Set detail icon
         current_icon = item.icon(self._column_names.index_name('thumb'))
         if current_icon:
-            thumb = self._icon_loader.get_icon_name(item.get_type())
+            thumb = self._icon_manager.get_icon_name(item.get_type())
             if thumb:
                 self._detail_icon.setPixmap(self._icon_manager.get_pixmap(thumb))
 
@@ -386,12 +389,25 @@ class AppDialog(QtGui.QWidget):
 
         process.startDetached(program, [path])
         process.close()
-    
+
     ############################################################################
     # Public methods
-
+    
     def add_item_to_tree(self, item):
         self._tree_widget.addTopLevelItem(item)
+        self._icon_manager.set_icon(item)
+
+        # Sort items
+        self._tree_widget.sortItems(self._tree_widget.header().sortIndicatorSection(), self._tree_widget.header().sortIndicatorOrder())
+        
+        # Resize header
+        self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
+
+    def closeEvent(self, event):
+        self._cache_thread.quit()
+        self._cache_thread.wait()
+
+        event.accept()
 
     ############################################################################
     # Private methods
@@ -447,8 +463,10 @@ class ColumnNames():
     def get_nice_names(self):
         return self._nice_names
 
-class CacheManager():
+class CacheManager(QtCore.QObject):
     def __init__(self, dialog, app, column_names):
+        super(CacheManager, self).__init__()
+        
         self._dialog = dialog
         self._app = app
         self._column_names = column_names
@@ -483,27 +501,36 @@ class CacheManager():
         self._2d_item_dict.clear()
         self._3d_item_dict.clear()
 
-    def get_caches(self, shot, step_filters, type_filters, search_text):
-        for step, enabled in step_filters.items():
+    def set_thread_variables(self, shot, step_filters, type_filters, search_text):
+        self._thread_var = {
+            'shot': shot,
+            'step_filters': step_filters,
+            'type_filters': type_filters,
+            'search_text': search_text
+        }
+
+    def get_caches(self):
+        for step, enabled in self._thread_var['step_filters'].items():
             ui_fields = {
-                'Shot': shot,
+                'Shot': self._thread_var['shot'],
                 'Step': step}
             
-            if enabled and type_filters['2D']:
+            if enabled and self._thread_var['type_filters']['2D']:
                 if step in self._2d_item_dict:
-                    self._set_hidden(False, self._2d_item_dict[step], search_text)
-                elif enabled:
-                    self._2d_item_dict[step] = self._caches_from_templates(self._2d_templates, ui_fields, search_text)
+                    self._set_hidden(False, self._2d_item_dict[step], self._thread_var['search_text'])
+                else:
+                    self._2d_item_dict[step] = self._caches_from_templates(self._2d_templates, ui_fields, self._thread_var['search_text'])
             elif step in self._2d_item_dict:
-                self._set_hidden(True, self._2d_item_dict[step], search_text)
+                self._set_hidden(True, self._2d_item_dict[step], self._thread_var['search_text'])
 
-            if enabled and type_filters['3D']:
+            if enabled and self._thread_var['type_filters']['3D']:
                 if step in self._3d_item_dict:
-                    self._set_hidden(False, self._3d_item_dict[step], search_text)
-                elif enabled:
-                    self._3d_item_dict[step] = self._caches_from_templates(self._3d_templates, ui_fields, search_text)
+                    self._set_hidden(False, self._3d_item_dict[step], self._thread_var['search_text'])
+                else:
+                    self._3d_item_dict[step] = self._caches_from_templates(self._3d_templates, ui_fields, self._thread_var['search_text'])
             elif step in self._3d_item_dict:
-                self._set_hidden(True, self._3d_item_dict[step], search_text)
+                self._set_hidden(True, self._3d_item_dict[step], self._thread_var['search_text'])
+        self.thread().terminate()
     
     ############################################################################
     # Private methods
@@ -540,14 +567,22 @@ class CacheManager():
     
     def _set_hidden(self, hidden, cache_dict, search_text):
         for item in cache_dict:
-            item.setHidden(hidden)
-            
-            if search_text and search_text not in item.get_path().lower():
-                item.setHidden(True)
+            current_hidden_var = item.isHidden()
+
+            new_hidden_var = hidden
+            if search_text and search_text.lower() not in item.get_path().lower():
+                new_hidden_var = True
+
+            if current_hidden_var != new_hidden_var:
+                item.setHidden(new_hidden_var)
+                item.treeWidget().header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
 class IconManager(QtGui.QPixmapCache):
-    def __init__(self):
+    def __init__(self, column_names, image_types):
         super(IconManager, self).__init__()
+        self._column_names = column_names
+        self._image_types = image_types
+
         self._label_height = 25
         self._thumb_dict = {}
 
@@ -564,6 +599,41 @@ class IconManager(QtGui.QPixmapCache):
         if name in self._thumb_dict.keys():
             return self.find(self._thumb_dict[name])
         return None
+
+    def get_icon_name(self, ext):
+        thumb = None
+        if ext == 'abc':
+            thumb = 'alembic'
+        elif ext == 'sc':
+            thumb = 'geometry'
+        elif ext == 'hip':
+            thumb = 'houdini'
+        elif ext in self._image_types:
+            thumb = 'image'
+        elif ext == 'ma':
+            thumb = 'maya'
+        elif ext == 'nk':
+            thumb = 'nuke'
+        elif ext == 'obj':
+            thumb = 'obj'
+        elif ext == 'vdb':
+            thumb = 'openvdb'
+        elif ext == 'mov':
+            thumb = 'video'
+
+        return thumb
+
+    def set_icon(self, item):
+        current_icon = item.icon(self._column_names.index_name('thumb'))
+        if not current_icon:
+            thumb = self.get_icon_name(item.get_type())
+            if thumb:
+                item.setIcon(self._column_names.index_name('thumb'), QtGui.QIcon(self.get_pixmap(thumb)))
+    def set_icons(self, item):
+        for child_index in range(item.childCount()):
+            child = item.child(child_index)
+
+            self.set_icon(child)
 
 class TopLevelTreeItem(QtGui.QTreeWidgetItem):
     def __init__(self, path, fields, column_names):
@@ -668,53 +738,3 @@ class TreeItem(TopLevelTreeItem):
 
     def get_properties(self):
         return self._properties
-
-class LoadIcons(QtCore.QObject):
-    def __init__(self, tree_widget, icon_manager, column_names, image_types):
-        super(LoadIcons, self).__init__()
-
-        self._tree_widget = tree_widget
-        self._icon_manager = icon_manager
-        self._column_names = column_names
-        self._image_types = image_types
-
-    def _set_item_icon(self, item):
-        current_icon = item.icon(self._column_names.index_name('thumb'))
-        if not current_icon:
-            thumb = self.get_icon_name(item.get_type())
-            if thumb:
-                item.setIcon(self._column_names.index_name('thumb'), QtGui.QIcon(self._icon_manager.get_pixmap(thumb)))
-
-    def set_thread_child_icons(self):
-        self.set_icons(self._tree_widget.invisibleRootItem())
-        self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
-        self.thread().terminate()
-
-    def get_icon_name(self, ext):
-        thumb = None
-        if ext == 'abc':
-            thumb = 'alembic'
-        elif ext == 'sc':
-            thumb = 'geometry'
-        elif ext == 'hip':
-            thumb = 'houdini'
-        elif ext in self._image_types:
-            thumb = 'image'
-        elif ext == 'ma':
-            thumb = 'maya'
-        elif ext == 'nk':
-            thumb = 'nuke'
-        elif ext == 'obj':
-            thumb = 'obj'
-        elif ext == 'vdb':
-            thumb = 'openvdb'
-        elif ext == 'mov':
-            thumb = 'video'
-
-        return thumb
-
-    def set_icons(self, item):
-        for child_index in range(item.childCount()):
-            child = item.child(child_index)
-
-            self._set_item_icon(child)
