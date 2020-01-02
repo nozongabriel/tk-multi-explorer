@@ -10,6 +10,9 @@ import collections
 import glob
 
 class AppDialog(QtGui.QWidget):
+
+    cache_abort_sig = QtCore.Signal()
+
     @property
     def hide_tk_title_bar(self):
         """
@@ -33,6 +36,8 @@ class AppDialog(QtGui.QWidget):
 
         self._cache_manager = CacheManager(self._current_sgtk, self._column_names, self.image_types)
         self._cache_manager.add_item_sig.connect(self.add_item_to_tree)
+        self.cache_abort_sig.connect(self._cache_manager.abort)
+
         self._cache_thread = QtCore.QThread()
         self._cache_manager.moveToThread(self._cache_thread)
 
@@ -238,7 +243,10 @@ class AppDialog(QtGui.QWidget):
 
     def _shot_selected(self, current_item, previous_item):
         if self._cache_thread.isRunning():
-            self._cache_thread.terminate()
+            self.cache_abort_sig.emit()
+            self._cache_thread.quit()
+            self._cache_thread.wait()
+
         self._refresh()
 
     def _refresh(self):
@@ -579,6 +587,7 @@ class CacheManager(QtCore.QObject):
         
         self._app = app
         self._column_names = column_names
+        self._abort = False
 
         self._2d_item_dict = {}
         self._3d_item_dict = {}
@@ -605,6 +614,9 @@ class CacheManager(QtCore.QObject):
 
     ############################################################################
     # Public methods
+
+    def abort(self):
+        self._abort = True
 
     def clear_cache(self):
         self._2d_item_dict.clear()
@@ -672,6 +684,12 @@ class CacheManager(QtCore.QObject):
                 if ('%04d' in cache_path and len(glob.glob(cache_path.replace('%04d', '*')))) or os.path.exists(cache_path):
                     item = TreeItem(cache_path, fields, self._column_names)
                     top_level_item.addChild(item)
+
+                # Process GUI events
+                if self._abort:
+                    self._abort = False
+                    return
+
         return items
     
     def _set_hidden(self, hidden, cache_dict, search_text):
