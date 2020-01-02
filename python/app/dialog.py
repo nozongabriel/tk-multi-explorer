@@ -31,7 +31,8 @@ class AppDialog(QtGui.QWidget):
         self._column_names = ColumnNames()
         self._icon_manager = IconManager(self._column_names, self.image_types)
 
-        self._cache_manager = CacheManager(self, self._current_sgtk, self._column_names)
+        self._cache_manager = CacheManager(self._current_sgtk, self._column_names, self.image_types)
+        self._cache_manager.add_item_sig.connect(self.add_item_to_tree)
         self._cache_thread = QtCore.QThread()
         self._cache_manager.moveToThread(self._cache_thread)
 
@@ -284,11 +285,8 @@ class AppDialog(QtGui.QWidget):
 
         # Set icons for new items
         self._icon_manager.set_icons(item)
-        self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
         
-        # Remove the expand indicator
-        if not item.childCount():
-            item.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.DontShowIndicator)
+        self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
     def _item_clicked(self, item, column):
         if not isinstance(item, TreeItem):
@@ -463,11 +461,122 @@ class ColumnNames():
     def get_nice_names(self):
         return self._nice_names
 
+class TopLevelTreeItem(QtGui.QTreeWidgetItem):
+    def __init__(self, path, fields, column_names):
+        super(TopLevelTreeItem, self).__init__()
+        self._fields = fields
+        self._column_names = column_names
+
+    def post_process(self):
+        children = []
+        for child_index in range(self.childCount()):
+            children.append(self.child(child_index))
+        children = sorted(children, key=lambda k: k.get_properties()['version']) 
+
+        self._latest_child = children[-1]
+        child_properties = self._latest_child.get_properties()
+
+        # Set GUI text columns
+        self.setText(self._column_names.index_name('name'), child_properties['name'][:-5])
+        self.setText(self._column_names.index_name('ver'), child_properties['version'])
+        self.setText(self._column_names.index_name('type'), child_properties['type'])
+        self.setText(self._column_names.index_name('depart'), child_properties['department'])
+        self.setText(self._column_names.index_name('modif'), child_properties['modified'])
+
+    def get_latest_child(self):
+        return self._latest_child
+
+    def get_generic_fields(self):
+        return self._fields
+
+    def item_expand(self):
+        for child_index in range(self.childCount()):
+            self.child(child_index).item_expand()
+
+    def get_path(self):
+        return self._latest_child.get_path()
+
+    def get_type(self):
+        return self._latest_child.get_type()
+
+    def get_properties(self):
+        return self._latest_child.get_properties()
+
+class TreeItem(TopLevelTreeItem):
+    def __init__(self, path, fields, column_names):
+        super(TreeItem, self).__init__(path, fields, column_names)
+        self._item_expanded = False
+        
+        # Check if it can have children through templates
+        if 'templates' in self._fields.keys():
+            self.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
+        
+        # Last modified
+        time = os.path.getctime(os.path.dirname(path))
+        date_time = datetime.utcfromtimestamp(time).strftime('%Y-%m-%d %H:%M:%S')
+
+        # Set item properties
+        self._properties = {
+            'name': os.path.basename(path).split('.')[0],
+            'version': str(fields['version']).zfill(3),
+            'type': path.split('.')[-1],
+            'department': str(fields['Step']),
+            'modified': date_time,
+            'path': path
+        }
+
+        # Set GUI text columns
+        self.setText(self._column_names.index_name('name'), self._properties['name'])
+        self.setText(self._column_names.index_name('ver'), self._properties['version'])
+        self.setText(self._column_names.index_name('type'), self._properties['type'])
+        self.setText(self._column_names.index_name('depart'), self._properties['department'])
+        self.setText(self._column_names.index_name('modif'), self._properties['modified'])
+
+    def _create_child_item(self, path, fields):
+        item = TreeItem(path, fields, self._column_names)
+        self.addChild(item)
+        return item
+
+    def item_expand(self):
+        if 'templates' in self._fields.keys() and not self._item_expanded:
+            work_template = self._fields['templates']['work_template']
+            if work_template:
+                path = work_template.apply_fields(self._fields)
+                fields = self._fields.copy()
+                fields.pop('templates', None)
+
+                self._create_child_item(path, fields)
+        
+            preview_template = self._fields['templates']['preview_template']
+            if preview_template:
+                path = preview_template.apply_fields(self._fields)
+                fields = self._fields.copy()
+                fields.pop('templates', None)
+
+                self._create_child_item(path, fields)
+
+            self._item_expanded = True
+
+        # Remove the expand indicator
+        if not self.childCount():
+            self.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.DontShowIndicator)
+
+    def get_path(self):
+        return self._properties['path']
+
+    def get_type(self):
+        return self._properties['type']
+
+    def get_properties(self):
+        return self._properties
+
 class CacheManager(QtCore.QObject):
-    def __init__(self, dialog, app, column_names):
+    
+    add_item_sig = QtCore.Signal(TopLevelTreeItem)
+
+    def __init__(self, app, column_names, image_types):
         super(CacheManager, self).__init__()
         
-        self._dialog = dialog
         self._app = app
         self._column_names = column_names
 
@@ -489,7 +598,7 @@ class CacheManager(QtCore.QObject):
             template_dict = {'cache_template': cache_template, 'work_template': work_template, 'preview_template': preview_template}
 
             extension = cache_template.definition.split('.')[-1]
-            if extension in self._dialog.image_types:
+            if extension in image_types:
                 self._2d_templates.append(template_dict)
             else:
                 self._3d_templates.append(template_dict)
@@ -554,7 +663,7 @@ class CacheManager(QtCore.QObject):
                     # Only add top level item if it has children
                     if top_level_item and top_level_item.childCount():
                         top_level_item.post_process()
-                        self._dialog.add_item_to_tree(top_level_item)
+                        self.add_item_sig.emit(top_level_item)
                         items.append(top_level_item)
                         
                     top_level_item = TopLevelTreeItem(cache_path, fields_no_ver, self._column_names)
@@ -634,107 +743,3 @@ class IconManager(QtGui.QPixmapCache):
             child = item.child(child_index)
 
             self.set_icon(child)
-
-class TopLevelTreeItem(QtGui.QTreeWidgetItem):
-    def __init__(self, path, fields, column_names):
-        super(TopLevelTreeItem, self).__init__()
-        self._fields = fields
-        self._column_names = column_names
-
-    def post_process(self):
-        children = []
-        for child_index in range(self.childCount()):
-            children.append(self.child(child_index))
-        children = sorted(children, key=lambda k: k.get_properties()['version']) 
-
-        self._latest_child = children[-1]
-        child_properties = self._latest_child.get_properties()
-
-        # Set GUI text columns
-        self.setText(self._column_names.index_name('name'), child_properties['name'][:-5])
-        self.setText(self._column_names.index_name('ver'), child_properties['version'])
-        self.setText(self._column_names.index_name('type'), child_properties['type'])
-        self.setText(self._column_names.index_name('depart'), child_properties['department'])
-        self.setText(self._column_names.index_name('modif'), child_properties['modified'])
-
-    def get_latest_child(self):
-        return self._latest_child
-
-    def get_generic_fields(self):
-        return self._fields
-
-    def item_expand(self):
-        pass
-
-    def get_path(self):
-        return self._latest_child.get_path()
-
-    def get_type(self):
-        return self._latest_child.get_type()
-
-    def get_properties(self):
-        return self._latest_child.get_properties()
-
-class TreeItem(TopLevelTreeItem):
-    def __init__(self, path, fields, column_names):
-        super(TreeItem, self).__init__(path, fields, column_names)
-        self._item_expanded = False
-        
-        # Check if it can have children through templates
-        if 'templates' in self._fields.keys():
-            self.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
-        
-        # Last modified
-        time = os.path.getctime(os.path.dirname(path))
-        date_time = datetime.utcfromtimestamp(time).strftime('%Y-%m-%d %H:%M:%S')
-
-        # Set item properties
-        self._properties = {
-            'name': os.path.basename(path).split('.')[0],
-            'version': str(fields['version']).zfill(3),
-            'type': path.split('.')[-1],
-            'department': str(fields['Step']),
-            'modified': date_time,
-            'path': path
-        }
-
-        # Set GUI text columns
-        self.setText(self._column_names.index_name('name'), self._properties['name'])
-        self.setText(self._column_names.index_name('ver'), self._properties['version'])
-        self.setText(self._column_names.index_name('type'), self._properties['type'])
-        self.setText(self._column_names.index_name('depart'), self._properties['department'])
-        self.setText(self._column_names.index_name('modif'), self._properties['modified'])
-
-    def _create_child_item(self, path, fields):
-        item = TreeItem(path, fields, self._column_names)
-        self.addChild(item)
-        return item
-
-    def item_expand(self):
-        if 'templates' in self._fields.keys() and not self._item_expanded:
-            work_template = self._fields['templates']['work_template']
-            if work_template:
-                path = work_template.apply_fields(self._fields)
-                fields = self._fields.copy()
-                fields.pop('templates', None)
-
-                self._create_child_item(path, fields)
-        
-            preview_template = self._fields['templates']['preview_template']
-            if preview_template:
-                path = preview_template.apply_fields(self._fields)
-                fields = self._fields.copy()
-                fields.pop('templates', None)
-
-                self._create_child_item(path, fields)
-
-            self._item_expanded = True
-
-    def get_path(self):
-        return self._properties['path']
-
-    def get_type(self):
-        return self._properties['type']
-
-    def get_properties(self):
-        return self._properties
