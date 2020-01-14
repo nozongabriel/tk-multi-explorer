@@ -11,8 +11,6 @@ import glob
 
 class AppDialog(QtGui.QWidget):
 
-    cache_abort_sig = QtCore.Signal()
-
     @property
     def hide_tk_title_bar(self):
         """
@@ -35,19 +33,19 @@ class AppDialog(QtGui.QWidget):
         self._icon_manager = IconManager(self._column_names, self.image_types)
 
         self._cache_manager = CacheManager(self._current_sgtk, self._column_names, self.image_types)
-        self._cache_manager.add_item_sig.connect(self.add_item_to_tree)
-        self.cache_abort_sig.connect(self._cache_manager.abort)
 
         self._cache_thread = QtCore.QThread()
         self._cache_manager.moveToThread(self._cache_thread)
 
         self._cache_thread.started.connect(self._cache_manager.get_caches)
 
+        self._cache_manager.add_item_sig.connect(self.add_item_to_tree)
+
         # Setup UI
         self._setup_ui()
         self._fill_shots()
         self._fill_filters()
-        
+
     ############################################################################
     # UI methods
 
@@ -61,10 +59,10 @@ class AppDialog(QtGui.QWidget):
         refresh_but.setFixedSize(25, 25)
         refresh_but.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('refresh')))
         refresh_but.clicked.connect(self._refresh)
-        
+
         upper_bar.addWidget(title_lab)
         upper_bar.addWidget(refresh_but)
-        
+
         # Side layout
         main_splitter = QtGui.QSplitter(QtCore.Qt.Horizontal)
         side_bar = QtGui.QVBoxLayout()
@@ -75,7 +73,7 @@ class AppDialog(QtGui.QWidget):
         self._shot_list_widget.currentItemChanged.connect(self._shot_selected)
 
         filter_widget = QtGui.QLabel('Filters')
-        
+
         self._step_list_widget = QtGui.QListWidget()
         self._step_list_widget.itemChanged.connect(self._fill_treewidget)
 
@@ -117,6 +115,7 @@ class AppDialog(QtGui.QWidget):
         self._tree_widget.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.SingleSelection)
         self._tree_widget.header().setSectionsMovable(False)
         self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
+        self._tree_widget.header().setSectionResizeMode(self._column_names.index_name('thumb'), QtGui.QHeaderView.Fixed)
 
         self._tree_widget.setSortingEnabled(True)
         self._tree_widget.header().setSortIndicatorShown(True)
@@ -125,6 +124,7 @@ class AppDialog(QtGui.QWidget):
 
         self._tree_widget.itemDoubleClicked.connect(self._tree_item_double_clicked)
         self._tree_widget.itemExpanded.connect(self._item_expanded)
+        self._tree_widget.itemCollapsed.connect(self._item_collapsed)
         self._tree_widget.itemClicked.connect(self._item_clicked)
 
         tree_layout.addWidget(self._search_bar)
@@ -166,7 +166,7 @@ class AppDialog(QtGui.QWidget):
         self._detail_open_nuke.setFixedSize(25, 25)
         self._detail_open_nuke.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('nuke')))
         self._detail_open_nuke.setEnabled(False)
-        
+
         self._detail_open_maya = QtGui.QPushButton()
         self._detail_open_maya.setFixedSize(25, 25)
         self._detail_open_maya.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('maya')))
@@ -196,7 +196,7 @@ class AppDialog(QtGui.QWidget):
             ('Modified', None),
             ('Path', None)
         ])
-        
+
         for key in self._detail_dict:
             label = QtGui.QLabel()
             label.setWordWrap(True)
@@ -207,7 +207,7 @@ class AppDialog(QtGui.QWidget):
         detail_layout.addWidget(self._detail_icon)
         detail_layout.addLayout(detail_buttons)
         detail_layout.addLayout(self._detail_form_layout)
-        
+
         splitter_detail_widget.setLayout(detail_layout)
 
         main_splitter.addWidget(splitter_side_bar_widget)
@@ -229,7 +229,7 @@ class AppDialog(QtGui.QWidget):
             for index in range(self._step_list_widget.count()):
                 item = self._step_list_widget.item(index)
                 steps[item.text()] = bool(item.checkState())
-            
+
             type_filter = {}
             for index in range(self._type_list_widget.count()):
                 item = self._type_list_widget.item(index)
@@ -243,10 +243,14 @@ class AppDialog(QtGui.QWidget):
 
     def _shot_selected(self, current_item, previous_item):
         if self._cache_thread.isRunning():
-            self.cache_abort_sig.emit()
+            print 'Interruption requested!'
+            self._cache_thread.requestInterruption()
+            print 'Quitting!'
             self._cache_thread.quit()
+            print 'Waiting!'
             self._cache_thread.wait()
 
+        print 'Refreshing!'
         self._refresh()
 
     def _refresh(self):
@@ -273,7 +277,7 @@ class AppDialog(QtGui.QWidget):
         for index in range(self._step_list_widget.count()):
             self._step_list_widget.item(index).setCheckState(QtCore.Qt.Checked)
         self._step_list_widget.itemChanged.connect(self._fill_treewidget)
-       
+
         self._fill_treewidget()
 
     def _select_no_filters(self):
@@ -293,7 +297,10 @@ class AppDialog(QtGui.QWidget):
 
         # Set icons for new items
         self._icon_manager.set_icons(item)
-        
+
+        self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
+
+    def _item_collapsed(self, item):
         self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
     def _item_clicked(self, item, column):
@@ -358,7 +365,7 @@ class AppDialog(QtGui.QWidget):
                 sequence = sequences[0]
 
                 if sequence.missing():
-                    cache_range = '[%s-%s], missing %s' % (sequence.format('%s'), sequence.format('%e'), sequence.format('%m'))
+                    cache_range = '[%s-%s], missing %s' % (sequence.format('%s'), sequence.format('%e'), sequence.format('%M'))
                 else:
                     cache_range = sequence.format('%R')
             self._detail_dict['Range'].setText(cache_range)
@@ -398,14 +405,14 @@ class AppDialog(QtGui.QWidget):
 
     ############################################################################
     # Public methods
-    
+
     def add_item_to_tree(self, item):
         self._tree_widget.addTopLevelItem(item)
         self._icon_manager.set_icon(item)
 
         # Sort items
         self._tree_widget.sortItems(self._tree_widget.header().sortIndicatorSection(), self._tree_widget.header().sortIndicatorOrder())
-        
+
         # Resize header
         self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
@@ -417,7 +424,7 @@ class AppDialog(QtGui.QWidget):
 
     ############################################################################
     # Private methods
-    
+
     def _fill_shots(self):
         current_project = self._current_sgtk.context.project['name']
         shotgun_shots = self._current_sgtk.shotgun.find("Shot", [['project.Project.name', 'is', current_project]], ['code'])
@@ -457,7 +464,7 @@ class AppDialog(QtGui.QWidget):
             self._type_list_widget.addItem(check_box)
 
         self._type_list_widget.setFixedHeight(len(type_list) * 20)
-    
+
 class ColumnNames():
     def __init__(self):
         self._nice_names = ['Thumbnail', 'Name', 'Version', 'Type', 'Department', 'Last Modified']
@@ -479,7 +486,7 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
         children = []
         for child_index in range(self.childCount()):
             children.append(self.child(child_index))
-        children = sorted(children, key=lambda k: k.get_properties()['version']) 
+        children = sorted(children, key=lambda k: k.get_properties()['version'])
 
         self._latest_child = children[-1]
         child_properties = self._latest_child.get_properties()
@@ -514,21 +521,29 @@ class TreeItem(TopLevelTreeItem):
     def __init__(self, path, fields, column_names):
         super(TreeItem, self).__init__(path, fields, column_names)
         self._item_expanded = False
-        
+
         # Check if it can have children through templates
-        if 'templates' in self._fields.keys():
+        if len(self._fields['templates'].keys()) > 1:
             self.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
-        
+
         # Last modified
         time = os.path.getctime(os.path.dirname(path))
         date_time = datetime.utcfromtimestamp(time).strftime('%Y-%m-%d %H:%M:%S')
+
+        # Exeption for depart
+        if 'Step' in fields.keys():
+            departement = fields['Step']
+        elif 'Compositing' in path:
+            departement = 'Compositing'
+        else:
+            departement = 'None'
 
         # Set item properties
         self._properties = {
             'name': os.path.basename(path).split('.')[0],
             'version': str(fields['version']).zfill(3),
             'type': path.split('.')[-1],
-            'department': str(fields['Step']),
+            'department': departement,
             'modified': date_time,
             'path': path
         }
@@ -554,7 +569,7 @@ class TreeItem(TopLevelTreeItem):
                 fields.pop('templates', None)
 
                 self._create_child_item(path, fields)
-        
+
             preview_template = self._fields['templates']['preview_template']
             if preview_template:
                 path = preview_template.apply_fields(self._fields)
@@ -579,12 +594,12 @@ class TreeItem(TopLevelTreeItem):
         return self._properties
 
 class CacheManager(QtCore.QObject):
-    
+
     add_item_sig = QtCore.Signal(TopLevelTreeItem)
 
     def __init__(self, app, column_names, image_types):
         super(CacheManager, self).__init__()
-        
+
         self._app = app
         self._column_names = column_names
         self._abort = False
@@ -594,6 +609,7 @@ class CacheManager(QtCore.QObject):
 
         self._2d_templates = []
         self._3d_templates = []
+        self._comp_templates = []
         for output_profile in self._app.get_setting("templates", []):
             cache_template = self._app.get_template_by_name(output_profile['cache_template'])
 
@@ -603,20 +619,20 @@ class CacheManager(QtCore.QObject):
             preview_template = ''
             if output_profile['preview_template']:
                 preview_template = self._app.get_template_by_name(output_profile['preview_template'])
-            
+
             template_dict = {'cache_template': cache_template, 'work_template': work_template, 'preview_template': preview_template}
 
             extension = cache_template.definition.split('.')[-1]
             if extension in image_types:
-                self._2d_templates.append(template_dict)
+                if 'Compositing' in cache_template.definition:
+                    self._comp_templates.append(template_dict)
+                else:
+                    self._2d_templates.append(template_dict)
             else:
                 self._3d_templates.append(template_dict)
 
     ############################################################################
     # Public methods
-
-    def abort(self):
-        self._abort = True
 
     def clear_cache(self):
         self._2d_item_dict.clear()
@@ -635,12 +651,17 @@ class CacheManager(QtCore.QObject):
             ui_fields = {
                 'Shot': self._thread_var['shot'],
                 'Step': step}
-            
+
             if enabled and self._thread_var['type_filters']['2D']:
                 if step in self._2d_item_dict:
                     self._set_hidden(False, self._2d_item_dict[step], self._thread_var['search_text'])
                 else:
                     self._2d_item_dict[step] = self._caches_from_templates(self._2d_templates, ui_fields, self._thread_var['search_text'])
+
+                    # Add compositing (exeption, in time shoud be removed)
+                    if step == 'Compositing':
+                        self._2d_item_dict[step] += self._caches_from_templates(self._comp_templates, ui_fields, self._thread_var['search_text'])
+
             elif step in self._2d_item_dict:
                 self._set_hidden(True, self._2d_item_dict[step], self._thread_var['search_text'])
 
@@ -651,8 +672,12 @@ class CacheManager(QtCore.QObject):
                     self._3d_item_dict[step] = self._caches_from_templates(self._3d_templates, ui_fields, self._thread_var['search_text'])
             elif step in self._3d_item_dict:
                 self._set_hidden(True, self._3d_item_dict[step], self._thread_var['search_text'])
+
+            # Interrup process
+            if self.thread().isInterruptionRequested():
+                self.thread().terminate()
         self.thread().terminate()
-    
+
     ############################################################################
     # Private methods
 
@@ -661,9 +686,15 @@ class CacheManager(QtCore.QObject):
         for template_dict in templates:
             template = template_dict['cache_template']
 
+            # Interrup process
+            if self.thread().isInterruptionRequested():
+                return []
+
             cache_paths = self._app.sgtk.abstract_paths_from_template(template, ui_fields)
             cache_paths.sort()
+
             top_level_item = None
+            top_level_item_added = False
             for cache_path in cache_paths:
                 fields = template.get_fields(cache_path)
                 fields['templates'] = template_dict
@@ -677,21 +708,21 @@ class CacheManager(QtCore.QObject):
                         top_level_item.post_process()
                         self.add_item_sig.emit(top_level_item)
                         items.append(top_level_item)
-                        
+
                     top_level_item = TopLevelTreeItem(cache_path, fields_no_ver, self._column_names)
-                
+
                 # Check if valid cache (remove duplicates when checking with templates that have and don't have {SEQ} key)
                 if ('%04d' in cache_path and len(glob.glob(cache_path.replace('%04d', '*')))) or os.path.exists(cache_path):
                     item = TreeItem(cache_path, fields, self._column_names)
                     top_level_item.addChild(item)
 
-                # Process GUI events
-                if self._abort:
-                    self._abort = False
-                    return
-
+            # Add the last element
+            if top_level_item and top_level_item.childCount():
+                top_level_item.post_process()
+                self.add_item_sig.emit(top_level_item)
+                items.append(top_level_item)
         return items
-    
+
     def _set_hidden(self, hidden, cache_dict, search_text):
         for item in cache_dict:
             current_hidden_var = item.isHidden()
