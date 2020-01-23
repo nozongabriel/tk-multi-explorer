@@ -38,6 +38,7 @@ class AppDialog(QtGui.QWidget):
         self._cache_manager.moveToThread(self._cache_thread)
 
         self._cache_thread.started.connect(self._cache_manager.get_caches)
+        self._cache_thread.finished.connect(self._set_done_gui)
 
         self._cache_manager.add_item_sig.connect(self.add_item_to_tree)
 
@@ -72,6 +73,8 @@ class AppDialog(QtGui.QWidget):
         self._shot_list_widget = QtGui.QListWidget()
         self._shot_list_widget.currentItemChanged.connect(self._shot_selected)
 
+        self._current_state_label = QtGui.QLabel('Done')
+
         filter_widget = QtGui.QLabel('Filters')
 
         self._step_list_widget = QtGui.QListWidget()
@@ -92,6 +95,7 @@ class AppDialog(QtGui.QWidget):
 
         side_bar.addWidget(project_label)
         side_bar.addWidget(self._shot_list_widget)
+        side_bar.addWidget(self._current_state_label)
         side_bar.addWidget(filter_widget)
         side_bar.addWidget(self._step_list_widget)
         side_bar.addLayout(filter_buttons)
@@ -239,16 +243,18 @@ class AppDialog(QtGui.QWidget):
             self._cache_manager.set_thread_variables(current_item.text(), steps, type_filter, self._search_bar.text())
 
             if not self._cache_thread.isRunning():
+                self._set_processing_gui()
                 self._cache_thread.start()
+
+    def _set_done_gui(self):
+        self._current_state_label.setText('Done')
+    
+    def _set_processing_gui(self):
+        self._current_state_label.setText('Processing...')
 
     def _shot_selected(self, current_item, previous_item):
         if self._cache_thread.isRunning():
-            print 'Interruption requested!'
-            self._cache_thread.requestInterruption()
-            print 'Quitting!'
-            self._cache_thread.quit()
-            print 'Waiting!'
-            self._cache_thread.wait()
+            self._cache_thread.terminate()
 
         print 'Refreshing!'
         self._refresh()
@@ -523,7 +529,7 @@ class TreeItem(TopLevelTreeItem):
         self._item_expanded = False
 
         # Check if it can have children through templates
-        if len(self._fields['templates'].keys()) > 1:
+        if 'templates' in self._fields.keys() and len(self._fields['templates'].keys()) > 1:
             self.setChildIndicatorPolicy(QtGui.QTreeWidgetItem.ShowIndicator)
 
         # Last modified
@@ -673,9 +679,6 @@ class CacheManager(QtCore.QObject):
             elif step in self._3d_item_dict:
                 self._set_hidden(True, self._3d_item_dict[step], self._thread_var['search_text'])
 
-            # Interrup process
-            if self.thread().isInterruptionRequested():
-                self.thread().terminate()
         self.thread().terminate()
 
     ############################################################################
@@ -685,10 +688,6 @@ class CacheManager(QtCore.QObject):
         items = []
         for template_dict in templates:
             template = template_dict['cache_template']
-
-            # Interrup process
-            if self.thread().isInterruptionRequested():
-                return []
 
             cache_paths = self._app.sgtk.abstract_paths_from_template(template, ui_fields)
             cache_paths.sort()

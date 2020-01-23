@@ -63,11 +63,7 @@ class ExplorerPanelApp(Application):
                 # dark themed icon for engines that recognize this format
                 "icons": {
                     "dark": {
-                        "png": os.path.join(
-                            os.path.dirname(__file__),
-                            "resources",
-                            "explorer_panel_menu_icon.png"
-                        )
+                        "png": os.path.join(os.path.dirname(__file__), "resources", "explorer_panel_menu_icon.png")
                     }
                 }
             }
@@ -205,6 +201,39 @@ class ExplorerPanelApp(Application):
         # start the UI
         try:
             widget = self.engine.show_panel(self._unique_panel_id, "Explorer", self, app_payload.AppDialog)
+        except AttributeError, e:
+            # just to gracefully handle older engines and older cores
+            self.log_warning("Could not execute show_panel method - please upgrade "
+                             "to latest core and engine! Falling back on show_dialog. "
+                             "Error: %s" % e)
+            widget = self.create_dialog()
+        else:
+            self._current_panel = widget
+            
+        return widget
+
+    def show_window(self):
+        app_payload = self.import_module("app")
+        
+        # start the UI
+        try:
+        
+            self.engine.show_dialog(self._unique_panel_id, "Explorer", self, app_payload.AppDialog)    
+
+            dialog = QtGui.QApplication.activeWindow()
+            if dialog :
+                flags = QtCore.Qt.Window
+
+                flags |= QtCore.Qt.WindowTitleHint
+                flags |= QtCore.Qt.WindowSystemMenuHint   
+                flags |= QtCore.Qt.WindowMinimizeButtonHint
+                flags |= QtCore.Qt.WindowMaximizeButtonHint
+                flags |= QtCore.Qt.WindowCloseButtonHint
+                flags |= QtCore.Qt.WindowContextHelpButtonHint
+                flags |= QtCore.Qt.WindowShadeButtonHint
+                
+                dialog.setWindowFlags(flags) 
+                dialog.show()
         except AttributeError, e:
             # just to gracefully handle older engines and older cores
             self.log_warning("Could not execute show_panel method - please upgrade "
