@@ -23,6 +23,7 @@ class AppDialog(QtGui.QWidget):
         QtGui.QWidget.__init__(self, parent)
 
         self.image_types = ('exr', 'jpg', 'dpx', 'png', 'tiff')
+        self.movie_types = ('mov', 'mp4')
 
         # most of the useful accessors are available through the Application class instance
         # it is often handy to keep a reference to this. You can get it via the following method:
@@ -30,7 +31,7 @@ class AppDialog(QtGui.QWidget):
 
         # Get Managers
         self._column_names = ColumnNames()
-        self._icon_manager = IconManager(self._column_names, self.image_types)
+        self._icon_manager = IconManager(self._column_names, self.image_types, self.movie_types)
 
         self._cache_manager = CacheManager(self._current_sgtk, self._column_names, self.image_types)
 
@@ -157,28 +158,31 @@ class AppDialog(QtGui.QWidget):
         self._detail_open_images = QtGui.QPushButton()
         self._detail_open_images.setFixedSize(25, 25)
         self._detail_open_images.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('image')))
-        self._detail_open_images.clicked.connect(self._detail_open_rv)
+        self._detail_open_images.clicked.connect(self._detail_click_open_images)
         self._detail_open_images.setEnabled(False)
 
         self._detail_open_video = QtGui.QPushButton()
         self._detail_open_video.setFixedSize(25, 25)
         self._detail_open_video.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('video')))
-        self._detail_open_video.clicked.connect(self._detail_open_rv)
+        self._detail_open_video.clicked.connect(self._detail_click_open_movie)
         self._detail_open_video.setEnabled(False)
 
         self._detail_open_nuke = QtGui.QPushButton()
         self._detail_open_nuke.setFixedSize(25, 25)
         self._detail_open_nuke.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('nuke')))
+        self._detail_open_nuke.clicked.connect(self._detail_click_open_nuke)
         self._detail_open_nuke.setEnabled(False)
 
         self._detail_open_maya = QtGui.QPushButton()
         self._detail_open_maya.setFixedSize(25, 25)
         self._detail_open_maya.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('maya')))
+        self._detail_open_maya.clicked.connect(self._detail_click_open_maya)
         self._detail_open_maya.setEnabled(False)
 
         self._detail_open_hou = QtGui.QPushButton()
         self._detail_open_hou.setFixedSize(25, 25)
         self._detail_open_hou.setIcon(QtGui.QIcon(self._icon_manager.get_pixmap('houdini')))
+        self._detail_open_hou.clicked.connect(self._detail_click_open_hou)
         self._detail_open_hou.setEnabled(False)
 
         detail_buttons = QtGui.QHBoxLayout()
@@ -241,7 +245,7 @@ class AppDialog(QtGui.QWidget):
 
             # Get caches
             self._cache_manager.set_thread_variables(current_item.text(), steps, type_filter, self._search_bar.text())
-
+            
             if not self._cache_thread.isRunning():
                 self._set_processing_gui()
                 self._cache_thread.start()
@@ -256,7 +260,6 @@ class AppDialog(QtGui.QWidget):
         if self._cache_thread.isRunning():
             self._cache_thread.terminate()
 
-        print 'Refreshing!'
         self._refresh()
 
     def _refresh(self):
@@ -295,7 +298,7 @@ class AppDialog(QtGui.QWidget):
         self._fill_treewidget()
 
     def _tree_item_double_clicked(self, item, column):
-        if item.get_type() in self.image_types:
+        if item.get_type() in self.image_types or item.get_type() in self.movie_types:
             self._open_rv(item.get_path())
 
     def _item_expanded(self, item):
@@ -340,7 +343,7 @@ class AppDialog(QtGui.QWidget):
 
             if element_type in self.image_types:
                 self._detail_open_images.setEnabled(True)
-            elif element_type == 'mov':
+            elif element_type in self.movie_types:
                 self._detail_open_video.setEnabled(True)
             elif element_type == 'nk':
                 self._detail_open_nuke.setEnabled(True)
@@ -386,11 +389,20 @@ class AppDialog(QtGui.QWidget):
         if clip_string:
             QtGui.QGuiApplication.clipboard().setText(clip_string)
 
-    def _detail_open_rv(self):
-        items = self._tree_widget.selectedItems()
+    def _detail_click_open_nuke(self):
+        print self._get_selected_path_by_type(['nk'])
 
-        if len(items) and items[0].get_type() in self.image_types:
-            self._open_rv(items[0].get_path())
+    def _detail_click_open_hou(self):
+        print self._get_selected_path_by_type(['hip'])
+
+    def _detail_click_open_maya(self):
+        print self._get_selected_path_by_type(['ma'])
+
+    def _detail_click_open_images(self):
+        self._open_rv(self._get_selected_path_by_type(self.image_types))
+
+    def _detail_click_open_movie(self):
+        self._open_rv(self._get_selected_path_by_type(self.movie_types))
 
     def _open_rv(self, path):
         process = QtCore.QProcess(self)
@@ -430,6 +442,31 @@ class AppDialog(QtGui.QWidget):
 
     ############################################################################
     # Private methods
+
+    def _get_selected_path_by_type(self, types):
+        items = self._tree_widget.selectedItems()
+
+        if len(items):
+            item = items[0]
+
+            if not isinstance(item, TreeItem):
+                item = item.get_latest_child()
+            
+            # Check itself first
+            if item.get_type() in types:
+                return item.get_path()
+
+            # Then check children
+            if item.childCount():
+                type_dict = {}
+                for child_index in range(item.childCount()):
+                    child = item.child(child_index)
+
+                    type_dict[child.get_type()] = child.get_path()
+                
+                for type_click in types:
+                    if type_click in type_dict.keys():
+                        return type_dict[type_click]
 
     def _fill_shots(self):
         current_project = self._current_sgtk.context.project['name']
@@ -536,20 +573,12 @@ class TreeItem(TopLevelTreeItem):
         time = os.path.getctime(os.path.dirname(path))
         date_time = datetime.utcfromtimestamp(time).strftime('%Y-%m-%d %H:%M:%S')
 
-        # Exeption for depart
-        if 'Step' in fields.keys():
-            departement = fields['Step']
-        elif 'Compositing' in path:
-            departement = 'Compositing'
-        else:
-            departement = 'None'
-
         # Set item properties
         self._properties = {
             'name': os.path.basename(path).split('.')[0],
             'version': str(fields['version']).zfill(3),
             'type': path.split('.')[-1],
-            'department': departement,
+            'department': fields['Step'],
             'modified': date_time,
             'path': path
         }
@@ -574,15 +603,17 @@ class TreeItem(TopLevelTreeItem):
                 fields = self._fields.copy()
                 fields.pop('templates', None)
 
-                self._create_child_item(path, fields)
+                if os.path.exists(path):
+                    self._create_child_item(path, fields)
 
             preview_template = self._fields['templates']['preview_template']
             if preview_template:
                 path = preview_template.apply_fields(self._fields)
                 fields = self._fields.copy()
                 fields.pop('templates', None)
-
-                self._create_child_item(path, fields)
+                
+                if os.path.exists(path):
+                    self._create_child_item(path, fields)
 
             self._item_expanded = True
 
@@ -692,11 +723,25 @@ class CacheManager(QtCore.QObject):
             cache_paths = self._app.sgtk.abstract_paths_from_template(template, ui_fields)
             cache_paths.sort()
 
+            # Sort based on basename of path instead of complete path
+            # This fixes some elements not being merged in the treeview
+            sort_list = []
+            for path in cache_paths:
+                sort_list.append({'basename': os.path.basename(path), 'path': path})
+
+            sorted_list = sorted(sort_list, key=lambda k: k['basename'])
+
+            cache_paths = []
+            for item in sorted_list:
+                cache_paths.append(item['path'])
+
+            # Add caches to tree
             top_level_item = None
-            top_level_item_added = False
             for cache_path in cache_paths:
                 fields = template.get_fields(cache_path)
                 fields['templates'] = template_dict
+                # Copy over step for comp (should be removed)
+                fields['Step'] = ui_fields['Step']
 
                 fields_no_ver = fields.copy()
                 fields_no_ver.pop('version', None)
@@ -735,10 +780,11 @@ class CacheManager(QtCore.QObject):
                 item.treeWidget().header().resizeSections(QtGui.QHeaderView.ResizeToContents)
 
 class IconManager(QtGui.QPixmapCache):
-    def __init__(self, column_names, image_types):
+    def __init__(self, column_names, image_types, movie_types):
         super(IconManager, self).__init__()
         self._column_names = column_names
         self._image_types = image_types
+        self._movie_types = movie_types
 
         self._label_height = 25
         self._thumb_dict = {}
@@ -775,7 +821,7 @@ class IconManager(QtGui.QPixmapCache):
             thumb = 'obj'
         elif ext == 'vdb':
             thumb = 'openvdb'
-        elif ext == 'mov':
+        elif ext in self._movie_types:
             thumb = 'video'
 
         return thumb
