@@ -9,6 +9,21 @@ from datetime import datetime
 import collections
 import glob
 
+###########################################################################
+###########################################################################
+# Problem with comp scripts due to 'comp' being used as step instead of 'compositing' 
+# that Shotgun gives us (see with Donat for solution)
+# Also this step should be solved to be able to seperate between comps in different 
+# steps of the pipeline
+#
+# Problem with maya render template path, have to remove {name} key as it is not used
+# and confuses Shotgun which results in nothing being found
+# Compare maya_render_output with maya_explorer_render_output to see the difference
+# Main problem with maya render exports are the optional parameters in []
+# Should remove as much as possible
+###########################################################################
+###########################################################################
+
 class AppDialog(QtGui.QWidget):
 
     @property
@@ -21,7 +36,7 @@ class AppDialog(QtGui.QWidget):
     def __init__(self, parent=None):
         # first, call the base class and let it do its thing.
         QtGui.QWidget.__init__(self, parent)
-
+        
         self.image_types = ('exr', 'jpg', 'dpx', 'png', 'tiff')
         self.movie_types = ('mov', 'mp4')
 
@@ -246,9 +261,10 @@ class AppDialog(QtGui.QWidget):
             # Get caches
             self._cache_manager.set_thread_variables(current_item.text(), steps, type_filter, self._search_bar.text())
             
-            if not self._cache_thread.isRunning():
-                self._set_processing_gui()
-                self._cache_thread.start()
+            self._cache_manager.get_caches()
+            # if not self._cache_thread.isRunning():
+            #     self._set_processing_gui()
+            #     self._cache_thread.start()
 
     def _set_done_gui(self):
         self._current_state_label.setText('Done')
@@ -544,7 +560,7 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
     def get_latest_child(self):
         return self._latest_child
 
-    def get_generic_fields(self):
+    def get_fields(self):
         return self._fields
 
     def item_expand(self):
@@ -631,7 +647,6 @@ class TreeItem(TopLevelTreeItem):
         return self._properties
 
 class CacheManager(QtCore.QObject):
-
     add_item_sig = QtCore.Signal(TopLevelTreeItem)
 
     def __init__(self, app, column_names, image_types):
@@ -647,6 +662,7 @@ class CacheManager(QtCore.QObject):
         self._2d_templates = []
         self._3d_templates = []
         self._comp_templates = []
+
         for output_profile in self._app.get_setting("templates", []):
             cache_template = self._app.get_template_by_name(output_profile['cache_template'])
 
@@ -719,9 +735,7 @@ class CacheManager(QtCore.QObject):
         items = []
         for template_dict in templates:
             template = template_dict['cache_template']
-
             cache_paths = self._app.sgtk.abstract_paths_from_template(template, ui_fields)
-            cache_paths.sort()
 
             # Sort based on basename of path instead of complete path
             # This fixes some elements not being merged in the treeview
@@ -745,8 +759,11 @@ class CacheManager(QtCore.QObject):
 
                 fields_no_ver = fields.copy()
                 fields_no_ver.pop('version', None)
+                if 'AOV' in fields_no_ver.keys():
+                    fields_no_ver.pop('AOV', None)
+                    fields_no_ver.pop('RenderLayer', None)
 
-                if not top_level_item or top_level_item.get_generic_fields() != fields_no_ver:
+                if not top_level_item or top_level_item.get_fields() != fields_no_ver:
                     # Only add top level item if it has children
                     if top_level_item and top_level_item.childCount():
                         top_level_item.post_process()
