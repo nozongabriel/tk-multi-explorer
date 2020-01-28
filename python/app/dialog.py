@@ -401,7 +401,10 @@ class AppDialog(QtGui.QWidget):
                 if sequence.missing():
                     cache_range = '[%s-%s], missing %s' % (sequence.format('%s'), sequence.format('%e'), sequence.format('%M'))
                 else:
-                    cache_range = sequence.format('%R')
+                    if len(sequence) == 1:
+                        cache_range = str(sequence[0].digits[-1])
+                    else:
+                        cache_range = sequence.format('%R')
             self._detail_dict['Range'].setText(cache_range)
         else:
             self._detail_dict['Range'].setText('Single')
@@ -551,20 +554,24 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
         self._column_names = column_names
 
     def post_process(self):
+        self._find_latest_child()
+        child_properties = self.get_properties()
+        
+        # Set GUI text columns
+        self.setText(self._column_names.index_name('name'), child_properties['name'])
+        self.setText(self._column_names.index_name('ver'), child_properties['version'])
+        self.setText(self._column_names.index_name('type'), child_properties['type'])
+        self.setText(self._column_names.index_name('depart'), child_properties['department'])
+        self.setText(self._column_names.index_name('modif'), child_properties['modified'])
+
+    def _find_latest_child(self):
         children = []
         for child_index in range(self.childCount()):
             children.append(self.child(child_index))
         children = sorted(children, key=lambda k: k.get_properties()['version'])
 
         self._latest_child = children[-1]
-        child_properties = self._latest_child.get_properties()
-        
-        # Set GUI text columns
-        self.setText(self._column_names.index_name('name'), child_properties['name'][:-5])
-        self.setText(self._column_names.index_name('ver'), child_properties['version'])
-        self.setText(self._column_names.index_name('type'), child_properties['type'])
-        self.setText(self._column_names.index_name('depart'), child_properties['department'])
-        self.setText(self._column_names.index_name('modif'), child_properties['modified'])
+        return self._latest_child
 
     def get_latest_child(self):
         return self._latest_child
@@ -584,6 +591,35 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
 
     def get_properties(self):
         return self._latest_child.get_properties()
+
+class RenderTopLevelTreeItem(TopLevelTreeItem):
+    def __init__(self, path, fields, column_names):
+        super(RenderTopLevelTreeItem, self).__init__(path, fields, column_names)
+
+    def _find_latest_child(self):
+        self._latest_child = None
+
+        if self._fields['isrenderlayer']:
+            for child_index in range(self.childCount()):
+                if self.child(child_index).get_properties()['name'] == 'RGBA':
+                    self._latest_child = self.child(child_index)
+        elif self._fields['isrendertoplevel']:
+            for child_index in range(self.childCount()):
+                if self.child(child_index).get_properties()['name'] == 'masterLayer':
+                    self._latest_child = self.child(child_index)
+
+        if not self._latest_child:
+            self._latest_child = self.child(0)
+        return self._latest_child
+
+    def get_properties(self):
+        properties = self._latest_child.get_properties().copy()
+
+        if self._fields['isrenderlayer']:
+            properties['name'] = self._fields['RenderLayer']
+        elif self._fields['isrendertoplevel']:
+            properties['name'] = 'Render_{}_{}'.format(self._fields['Shot'], str(self._fields['version']).zfill(3))
+        return properties
 
 class TreeItem(TopLevelTreeItem):
     def __init__(self, path, fields, column_names):
@@ -654,6 +690,13 @@ class TreeItem(TopLevelTreeItem):
 
     def get_properties(self):
         return self._properties
+
+class AovTreeItem(TreeItem):
+    def __init__(self, path, fields, column_names):
+        super(AovTreeItem, self).__init__(path, fields, column_names)
+
+        self._properties['name'] = fields['AOV']
+        self.setText(self._column_names.index_name('name'), self._properties['name'])
 
 class CacheManager(QtCore.QObject):
     add_item_sig = QtCore.Signal(TopLevelTreeItem)
@@ -761,6 +804,9 @@ class CacheManager(QtCore.QObject):
                     fields['templates'] = template_dict
                     # Copy over step for comp (should be removed)
                     fields['Step'] = ui_fields['Step']
+                    # Fields for toplevel items
+                    fields['isrendertoplevel'] = False
+                    fields['isrenderlayer'] = False
 
                     if not top_level_item or top_level_item.get_fields()['version'] != fields['version']:
                         if top_level_item:
@@ -772,19 +818,18 @@ class CacheManager(QtCore.QObject):
                             items.append(top_level_item)
 
                         top_level_fields = fields.copy()
-                        top_level_fields.pop('AOV', None)
-                        top_level_fields.pop('RenderLayer', None)
-                        top_level_item = TopLevelTreeItem(cache_path, top_level_fields, self._column_names)
+                        top_level_fields['isrendertoplevel'] = True
+                        top_level_item = RenderTopLevelTreeItem(cache_path, top_level_fields, self._column_names)
                         renderlayer_item = None
 
                     if not renderlayer_item or renderlayer_item.get_fields()['RenderLayer'] != fields['RenderLayer']:
                         render_layer_fields = fields.copy()
-                        render_layer_fields.pop('AOV', None)
-                        renderlayer_item = TopLevelTreeItem(cache_path, render_layer_fields, self._column_names)
+                        render_layer_fields['isrenderlayer'] = True
+                        renderlayer_item = RenderTopLevelTreeItem(cache_path, render_layer_fields, self._column_names)
 
                         top_level_item.addChild(renderlayer_item)
                         
-                    aov_item = TreeItem(cache_path, fields, self._column_names)
+                    aov_item = AovTreeItem(cache_path, fields, self._column_names)
                     renderlayer_item.addChild(aov_item)
 
                 # Add the last element
