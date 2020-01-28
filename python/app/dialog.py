@@ -21,6 +21,15 @@ import glob
 # Compare maya_render_output with maya_explorer_render_output to see the difference
 # Main problem with maya render exports are the optional parameters in []
 # Should remove as much as possible
+#
+# Problem with renders steps at the moment
+# Currently maya render template looks like the following
+# 'Compositing/Images/3DFootages/{Shot}/{Shot}[_{name}]_v{version}[/{RenderLayer}][/{Camera}][/{AOV}]/{Shot}[_{name}]_v{version}.{SEQ}.exr'
+# The main problem is the exclusion of the {step} key
+# this means that if multiple departements want to render something they might overwrite each other
+# In general it makes it very confusing as everything from all departements is dumpt in the same folder
+#
+# Should add aov name in file name
 ###########################################################################
 ###########################################################################
 
@@ -36,7 +45,7 @@ class AppDialog(QtGui.QWidget):
     def __init__(self, parent=None):
         # first, call the base class and let it do its thing.
         QtGui.QWidget.__init__(self, parent)
-        
+
         self.image_types = ('exr', 'jpg', 'dpx', 'png', 'tiff')
         self.movie_types = ('mov', 'mp4')
 
@@ -549,7 +558,7 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
 
         self._latest_child = children[-1]
         child_properties = self._latest_child.get_properties()
-
+        
         # Set GUI text columns
         self.setText(self._column_names.index_name('name'), child_properties['name'][:-5])
         self.setText(self._column_names.index_name('ver'), child_properties['version'])
@@ -736,52 +745,101 @@ class CacheManager(QtCore.QObject):
         for template_dict in templates:
             template = template_dict['cache_template']
             cache_paths = self._app.sgtk.abstract_paths_from_template(template, ui_fields)
+            
+            # different logic for renders
+            if 'AOV' in template.keys and 'RenderLayer' in template.keys:
+                # sort paths
+                cache_paths.sort()
 
-            # Sort based on basename of path instead of complete path
-            # This fixes some elements not being merged in the treeview
-            sort_list = []
-            for path in cache_paths:
-                sort_list.append({'basename': os.path.basename(path), 'path': path})
+                # Add caches to tree
+                top_level_item = None
+                renderlayer_item = None
+                aov_item = None
 
-            sorted_list = sorted(sort_list, key=lambda k: k['basename'])
+                for cache_path in cache_paths:
+                    fields = template.get_fields(cache_path)
+                    fields['templates'] = template_dict
+                    # Copy over step for comp (should be removed)
+                    fields['Step'] = ui_fields['Step']
 
-            cache_paths = []
-            for item in sorted_list:
-                cache_paths.append(item['path'])
+                    if not top_level_item or top_level_item.get_fields()['version'] != fields['version']:
+                        if top_level_item:
+                            for index in range(top_level_item.childCount()):
+                                top_level_item.child(index).post_process()
+                            top_level_item.post_process()
 
-            # Add caches to tree
-            top_level_item = None
-            for cache_path in cache_paths:
-                fields = template.get_fields(cache_path)
-                fields['templates'] = template_dict
-                # Copy over step for comp (should be removed)
-                fields['Step'] = ui_fields['Step']
+                            self.add_item_sig.emit(top_level_item)
+                            items.append(top_level_item)
 
-                fields_no_ver = fields.copy()
-                fields_no_ver.pop('version', None)
-                if 'AOV' in fields_no_ver.keys():
-                    fields_no_ver.pop('AOV', None)
-                    fields_no_ver.pop('RenderLayer', None)
+                        top_level_fields = fields.copy()
+                        top_level_fields.pop('AOV', None)
+                        top_level_fields.pop('RenderLayer', None)
+                        top_level_item = TopLevelTreeItem(cache_path, top_level_fields, self._column_names)
+                        renderlayer_item = None
 
-                if not top_level_item or top_level_item.get_fields() != fields_no_ver:
-                    # Only add top level item if it has children
-                    if top_level_item and top_level_item.childCount():
-                        top_level_item.post_process()
-                        self.add_item_sig.emit(top_level_item)
-                        items.append(top_level_item)
+                    if not renderlayer_item or renderlayer_item.get_fields()['RenderLayer'] != fields['RenderLayer']:
+                        render_layer_fields = fields.copy()
+                        render_layer_fields.pop('AOV', None)
+                        renderlayer_item = TopLevelTreeItem(cache_path, render_layer_fields, self._column_names)
 
-                    top_level_item = TopLevelTreeItem(cache_path, fields_no_ver, self._column_names)
+                        top_level_item.addChild(renderlayer_item)
+                        
+                    aov_item = TreeItem(cache_path, fields, self._column_names)
+                    renderlayer_item.addChild(aov_item)
 
-                # Check if valid cache (remove duplicates when checking with templates that have and don't have {SEQ} key)
-                if ('%04d' in cache_path and len(glob.glob(cache_path.replace('%04d', '*')))) or os.path.exists(cache_path):
-                    item = TreeItem(cache_path, fields, self._column_names)
-                    top_level_item.addChild(item)
+                # Add the last element
+                if top_level_item and top_level_item.childCount():
+                    for index in range(top_level_item.childCount()):
+                        top_level_item.child(index).post_process()
+                    
+                    top_level_item.post_process()
+                    self.add_item_sig.emit(top_level_item)
+                    items.append(top_level_item)
 
-            # Add the last element
-            if top_level_item and top_level_item.childCount():
-                top_level_item.post_process()
-                self.add_item_sig.emit(top_level_item)
-                items.append(top_level_item)
+            # regular tree adding logic
+            else:
+                # Sort based on basename of path instead of complete path
+                # This fixes some elements not being merged in the treeview
+                sort_list = []
+                for path in cache_paths:
+                    sort_list.append({'basename': os.path.basename(path), 'path': path})
+
+                sorted_list = sorted(sort_list, key=lambda k: k['basename'])
+
+                cache_paths = []
+                for item in sorted_list:
+                    cache_paths.append(item['path'])
+
+                # Add caches to tree
+                top_level_item = None
+                for cache_path in cache_paths:
+                    fields = template.get_fields(cache_path)
+                    fields['templates'] = template_dict
+                    # Copy over step for comp (should be removed)
+                    fields['Step'] = ui_fields['Step']
+
+                    fields_no_ver = fields.copy()
+                    fields_no_ver.pop('version', None)
+
+                    if not top_level_item or top_level_item.get_fields() != fields_no_ver:
+                        # Only add top level item if it has children
+                        if top_level_item and top_level_item.childCount():
+                            top_level_item.post_process()
+                            self.add_item_sig.emit(top_level_item)
+                            items.append(top_level_item)
+
+                        top_level_item = TopLevelTreeItem(cache_path, fields_no_ver, self._column_names)
+
+                    # Check if valid cache (remove duplicates when checking with templates that have and don't have {SEQ} key)
+                    if ('%04d' in cache_path and len(glob.glob(cache_path.replace('%04d', '*')))) or os.path.exists(cache_path):
+                        item = TreeItem(cache_path, fields, self._column_names)
+                        top_level_item.addChild(item)
+
+                # Add the last element
+                if top_level_item and top_level_item.childCount():
+                    top_level_item.post_process()
+                    self.add_item_sig.emit(top_level_item)
+                    items.append(top_level_item)
         return items
 
     def _set_hidden(self, hidden, cache_dict, search_text):
