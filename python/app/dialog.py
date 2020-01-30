@@ -135,6 +135,7 @@ class AppDialog(QtGui.QWidget):
         tree_layout = QtGui.QVBoxLayout()
         self._search_bar = QtGui.QLineEdit()
         self._search_bar.setPlaceholderText('Search')
+        self._search_bar.setClearButtonEnabled(True)
         self._search_bar.returnPressed.connect(self._fill_treewidget)
 
         self._tree_widget = QtGui.QTreeWidget()
@@ -581,6 +582,8 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
         return self._latest_child
 
     def get_latest_child(self):
+        if not isinstance(self._latest_child, TreeItem):
+            return self._latest_child.get_latest_child()
         return self._latest_child
 
     def get_fields(self):
