@@ -440,7 +440,14 @@ class AppDialog(QtGui.QWidget):
         if system == "linux2":
             program = 'rv'
         elif system == 'win32':
-            program = 'C:/Program Files/Shotgun/RV-7.2.6/bin/rv.exe'
+            possible_rv_s = glob.glob('C:/Program Files/Shotgun/RV-*/bin/rv.exe')
+            possible_rv_s.sort()
+
+            if len(possible_rv_s):
+                program = possible_rv_s[-1]
+            else:
+                self._current_sgtk.log_error('Could not find rv!')
+                return
         else:
             msg = "Platform '%s' is not supported." % (system)
             self._current_sgtk.log_error(msg)
@@ -809,7 +816,7 @@ class CacheManager(QtCore.QObject):
                     fields['isrenderlayer'] = False
 
                     if not top_level_item or top_level_item.get_fields()['version'] != fields['version']:
-                        if top_level_item:
+                        if top_level_item and top_level_item.childCount():
                             for index in range(top_level_item.childCount()):
                                 top_level_item.child(index).post_process()
                             top_level_item.post_process()
@@ -836,8 +843,8 @@ class CacheManager(QtCore.QObject):
                 if top_level_item and top_level_item.childCount():
                     for index in range(top_level_item.childCount()):
                         top_level_item.child(index).post_process()
-                    
                     top_level_item.post_process()
+
                     self.add_item_sig.emit(top_level_item)
                     items.append(top_level_item)
 
