@@ -241,8 +241,9 @@ class AppDialog(QtGui.QWidget):
         for key in self._detail_dict:
             label = QtGui.QLabel()
             label.setWordWrap(True)
+            label.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+            
             self._detail_dict[key] = label
-
             self._detail_form_layout.addRow(key, self._detail_dict[key])
 
         detail_layout.addWidget(self._detail_icon)
@@ -391,12 +392,14 @@ class AppDialog(QtGui.QWidget):
 
         for key in self._detail_dict:
             if key.lower() in properties.keys():
-                # Replace path with slashes with slash and spaces for wordwrap to work
                 text = properties[key.lower()]
-                text_parts = text.split(os.sep)
-                text_parts = text_parts[-4:]
-                text = os.sep.join(text_parts).replace(os.sep, '{} '.format(os.sep))
-                text = text.replace('_', ' _')
+
+                # Add spcaes for wordwrap (should remove this with newer qt)
+                amount_char = 25
+                if len(text) > amount_char:
+                    split_text = [text[i:i+amount_char] for i in range(0, len(text), amount_char)]
+                    text = ' '.join(split_text)
+
                 self._detail_dict[key].setText(text)
 
         # Set Range if needed
@@ -518,7 +521,9 @@ class AppDialog(QtGui.QWidget):
 
         shots = []
         for shot in shotgun_shots:
-            shots.append(shot['code'])
+            # If the shot code contains a space it means there is probably a '-', replace all spaces with this
+            # Fix for Shotgun doing weird things
+            shots.append(shot['code'].replace(' ', '-'))
         shots.sort()
 
         self._shot_list_widget.addItems(shots)
