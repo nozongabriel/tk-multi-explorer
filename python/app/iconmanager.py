@@ -9,7 +9,7 @@ class IconManager(QtGui.QPixmapCache):
         self._image_types = image_types
         self._movie_types = movie_types
 
-        self._label_height = 25
+        self._label_height = 50
         self._thumb_dict = {}
 
         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources"))
