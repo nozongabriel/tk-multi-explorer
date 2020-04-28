@@ -474,7 +474,7 @@ class AppDialog(QtGui.QWidget):
     def add_item_to_tree(self, item):
         self._tree_widget.addTopLevelItem(item)
         self._icon_manager.set_icon(item)
-
+        
         # Sort items
         self._tree_widget.sortItems(self._tree_widget.header().sortIndicatorSection(), self._tree_widget.header().sortIndicatorOrder())
 

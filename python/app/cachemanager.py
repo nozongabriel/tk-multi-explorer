@@ -60,6 +60,13 @@ class CacheManager(QtCore.QObject):
         }
 
     def get_caches(self):
+        # get all published paths for shot
+        self._publishes = []
+        base_project_path = os.path.dirname(self._app.tank.project_path)
+
+        for publish_file in self._app.shotgun.find('PublishedFile', [['project.Project.name', 'is', self._app.context.project['name']]], ['path_cache']):
+            self._publishes.append(os.path.join(base_project_path, publish_file['path_cache'].replace('/', os.sep)))
+
         for step, enabled in self._thread_var['step_filters'].items():
             ui_fields = {
                 'Shot': self._thread_var['shot'],
@@ -115,6 +122,7 @@ class CacheManager(QtCore.QObject):
                     # Fields for toplevel items
                     fields['isrendertoplevel'] = False
                     fields['isrenderlayer'] = False
+                    fields['published'] = self._check_published(cache_path)
 
                     if not top_level_item or top_level_item.get_fields()['version'] != fields['version']:
                         if top_level_item and top_level_item.childCount():
@@ -170,9 +178,12 @@ class CacheManager(QtCore.QObject):
                     fields['templates'] = template_dict
                     # Copy over step for comp (should be removed)
                     fields['Step'] = ui_fields['Step']
+                    fields['published'] = self._check_published(cache_path)
 
+                    # Create copy of fields to compare against, remove keys that can not be the same
                     fields_no_ver = fields.copy()
                     fields_no_ver.pop('version', None)
+                    fields_no_ver.pop('published', None)
 
                     if not top_level_item or top_level_item.get_fields() != fields_no_ver:
                         # Only add top level item if it has children
@@ -206,3 +217,9 @@ class CacheManager(QtCore.QObject):
             if current_hidden_var != new_hidden_var:
                 item.setHidden(new_hidden_var)
                 item.treeWidget().header().resizeSections(QtGui.QHeaderView.ResizeToContents)
+
+    def _check_published(self, path):
+        for publish in self._publishes:
+            if publish == path:
+                return True
+        return False

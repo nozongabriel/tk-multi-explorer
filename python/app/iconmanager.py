@@ -12,14 +12,21 @@ class IconManager(QtGui.QPixmapCache):
         self._label_height = 25
         self._thumb_dict = {}
 
-        thumb_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources"))
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources"))
         thumb_files = ['alembic', 'clipboard', 'geometry', 'houdini', 'image', 'maya', 'nuke', 'obj', 'openvdb', 'refresh', 'video']
+        svg_files = ['refresh', 'check', 'cross']
 
         for thumb in thumb_files:
-            image = QtGui.QPixmap(os.path.join(thumb_path, '{}.png'.format(thumb)))
+            image = QtGui.QPixmap(os.path.join(base_path, '{}.png'.format(thumb)))
             key = self.insert(image.scaledToHeight(self._label_height, QtCore.Qt.SmoothTransformation))
 
             self._thumb_dict[thumb] = key
+
+        for svg in svg_files:
+            image = QtGui.QPixmap(os.path.join(base_path, '{}.svg'.format(svg)))
+            key = self.insert(image.scaledToHeight(self._label_height, QtCore.Qt.SmoothTransformation))
+
+            self._thumb_dict[svg] = key
 
     def get_pixmap(self, name):
         if name in self._thumb_dict.keys():
@@ -50,11 +57,19 @@ class IconManager(QtGui.QPixmapCache):
         return thumb
 
     def set_icon(self, item):
-        current_icon = item.icon(self._column_names.index_name('thumb'))
-        if not current_icon:
+        thumb_icon = item.icon(self._column_names.index_name('thumb'))
+        if not thumb_icon:
             thumb = self.get_icon_name(item.get_type())
             if thumb:
                 item.setIcon(self._column_names.index_name('thumb'), QtGui.QIcon(self.get_pixmap(thumb)))
+
+        publish_icon = item.icon(self._column_names.index_name('pub'))
+        if not publish_icon:
+            if item.get_published():
+                item.setIcon(self._column_names.index_name('pub'), QtGui.QIcon(self.get_pixmap('check')))
+            else:
+                item.setIcon(self._column_names.index_name('pub'), QtGui.QIcon(self.get_pixmap('cross')))
+
     def set_icons(self, item):
         for child_index in range(item.childCount()):
             child = item.child(child_index)

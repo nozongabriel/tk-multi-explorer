@@ -1,0 +1,7 @@
+<?xml version="1.0" ?><!DOCTYPE svg  PUBLIC '-//W3C//DTD SVG 1.1//EN'  'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'><svg height="512px" style="enable-background:new 0 0 512 512;" version="1.1" viewBox="0 0 512 512" width="512px" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><style type="text/css">
+<![CDATA[
+	.st0{display:inline;}
+	.st1{fill:none;stroke:#000000;stroke-width:16;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:10;}
+	.st2{display:none;}
+]]>
+</style><g id="check"><polyline class="st1" points="48.5,255 185.5,392 456,121.5  "/></g><g class="st2" id="expanded"><g class="st0"><path d="M185.5,400c-2.048,0-4.095-0.781-5.657-2.343l-137-137c-3.124-3.125-3.124-8.19,0-11.314s8.189-3.124,11.313,0    L185.5,380.687l264.843-264.843c3.125-3.124,8.189-3.124,11.314,0c3.124,3.124,3.124,8.189,0,11.313l-270.501,270.5    C189.595,399.219,187.547,400,185.5,400z"/></g></g></svg>

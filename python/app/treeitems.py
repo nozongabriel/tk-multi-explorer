@@ -47,6 +47,9 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
     def get_type(self):
         return self._latest_child.get_type()
 
+    def get_published(self):
+        return self._latest_child.get_published()
+
     def get_properties(self):
         return self._latest_child.get_properties()
 
@@ -97,6 +100,7 @@ class TreeItem(TopLevelTreeItem):
             'name': os.path.basename(path).split('.')[0],
             'version': str(fields['version']).zfill(3),
             'type': path.split('.')[-1],
+            'published': fields['published'],
             'department': fields['Step'],
             'modified': date_time,
             'path': path
@@ -147,6 +151,9 @@ class TreeItem(TopLevelTreeItem):
 
     def get_type(self):
         return self._properties['type']
+
+    def get_published(self):
+        return self._properties['published']
 
     def get_properties(self):
         return self._properties
