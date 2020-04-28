@@ -13,14 +13,7 @@ class IconManager(QtGui.QPixmapCache):
         self._thumb_dict = {}
 
         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources"))
-        thumb_files = ['alembic', 'clipboard', 'geometry', 'houdini', 'image', 'maya', 'nuke', 'obj', 'openvdb', 'refresh', 'video']
-        svg_files = ['refresh', 'check', 'cross']
-
-        for thumb in thumb_files:
-            image = QtGui.QPixmap(os.path.join(base_path, '{}.png'.format(thumb)))
-            key = self.insert(image.scaledToHeight(self._label_height, QtCore.Qt.SmoothTransformation))
-
-            self._thumb_dict[thumb] = key
+        svg_files = ['refresh', 'check', 'cross', 'image', 'houdini', 'maya', 'nuke', 'video', 'clipboard', 'openvdb', 'obj', 'alembic', 'geometry']
 
         for svg in svg_files:
             image = QtGui.QPixmap(os.path.join(base_path, '{}.svg'.format(svg)))
