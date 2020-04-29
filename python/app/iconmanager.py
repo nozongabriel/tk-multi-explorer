@@ -13,7 +13,7 @@ class IconManager(QtGui.QPixmapCache):
         self._thumb_dict = {}
 
         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources"))
-        svg_files = ['refresh', 'check', 'cross', 'image', 'houdini', 'maya', 'nuke', 'video', 'clipboard', 'openvdb', 'obj', 'alembic', 'geometry']
+        svg_files = ('refresh', 'check', 'cross', 'image', 'houdini', 'maya', 'nuke', 'video', 'clipboard', 'openvdb', 'obj', 'alembic', 'geometry')
 
         for svg in svg_files:
             image = QtGui.QPixmap(os.path.join(base_path, '{}.svg'.format(svg)))
@@ -30,7 +30,7 @@ class IconManager(QtGui.QPixmapCache):
         thumb = None
         if ext == 'abc':
             thumb = 'alembic'
-        elif ext == 'sc':
+        elif ext in ['sc', 'fbx']:
             thumb = 'geometry'
         elif ext == 'hip':
             thumb = 'houdini'
