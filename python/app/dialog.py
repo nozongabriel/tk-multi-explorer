@@ -1,8 +1,10 @@
 import os
 import sys
-import pyseq
 import collections
 import glob
+
+sys.path.append(r'\\server01\shared\sharedPython\modules\pyseq')
+import pyseq
 
 import sgtk
 from sgtk.platform.qt import QtCore, QtGui
@@ -16,27 +18,6 @@ import treeitems
 ###########################################################################
 # Problem with comp scripts due to 'comp' being used as step instead of 'compositing' 
 # that Shotgun gives us (see with Donat for solution)
-# Also this step should be solved to be able to seperate between comps in different 
-# steps of the pipeline
-#
-# Problem with maya render template path, have to remove {name} key as it is not used
-# and confuses Shotgun which results in nothing being found
-# Compare maya_render_output with maya_explorer_render_output to see the difference
-# Main problem with maya render exports are the optional parameters in []
-# Should remove as much as possible
-#
-# Problem with renders steps at the moment
-# Currently maya render template looks like the following
-# 'Compositing/Images/3DFootages/{Shot}/{Shot}[_{name}]_v{version}[/{RenderLayer}][/{Camera}][/{AOV}]/{Shot}[_{name}]_v{version}.{SEQ}.exr'
-# The main problem is the exclusion of the {step} key
-# this means that if multiple departements want to render something they might overwrite each other
-# In general it makes it very confusing as everything from all departements is dumped in the same folder
-#
-# Should add aov name in file name
-#
-# Should remove 'short_name' field in Shotgun from all of the steps, this creates confusion
-# in the system as some folders are named with the code and some use the short_name this is because 
-# sometimes the short_name is the same as the code name.
 ###########################################################################
 ###########################################################################
 
@@ -142,7 +123,8 @@ class AppDialog(QtGui.QWidget):
         tree_layout = QtGui.QVBoxLayout()
         self._search_bar = QtGui.QLineEdit()
         self._search_bar.setPlaceholderText('Search')
-        self._search_bar.setClearButtonEnabled(True)
+        if self._current_sgtk.engine.has_qt5:
+            self._search_bar.setClearButtonEnabled(True)
         self._search_bar.returnPressed.connect(self._fill_treewidget)
         self._search_bar.textEdited.connect(self._fill_treewidget)
 
@@ -151,13 +133,16 @@ class AppDialog(QtGui.QWidget):
         self._tree_widget.setColumnCount(1)
         self._tree_widget.setHeaderLabels(self._column_names.get_nice_names())
         self._tree_widget.setSelectionMode(QtGui.QAbstractItemView.SelectionMode.SingleSelection)
-        self._tree_widget.header().setSectionsMovable(False)
+        if self._current_sgtk.engine.has_qt5:
+            self._tree_widget.header().setSectionsMovable(False)
         self._tree_widget.header().resizeSections(QtGui.QHeaderView.ResizeToContents)
-        self._tree_widget.header().setSectionResizeMode(self._column_names.index_name('thumb'), QtGui.QHeaderView.Fixed)
+        if self._current_sgtk.engine.has_qt5:
+            self._tree_widget.header().setSectionResizeMode(self._column_names.index_name('thumb'), QtGui.QHeaderView.Fixed)
 
         self._tree_widget.setSortingEnabled(True)
         self._tree_widget.header().setSortIndicatorShown(True)
-        self._tree_widget.header().setSectionsClickable(True)
+        if self._current_sgtk.engine.has_qt5:
+            self._tree_widget.header().setSectionsClickable(True)
         self._tree_widget.header().setSortIndicator(self._column_names.index_name('modif'), QtCore.Qt.DescendingOrder)
 
         self._tree_widget.itemDoubleClicked.connect(self._tree_item_double_clicked)

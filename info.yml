@@ -16,6 +16,8 @@ configuration:
         type: list     
         description: >
             Specify a list of templates to be scanned by the Explorer.
+        allows_empty: True
+
         values:
             type: dict
             description: > 

@@ -11,6 +11,7 @@
 import os
 
 from sgtk.platform import Application
+from sgtk.platform.qt import QtCore, QtGui
 
 class ExplorerPanelApp(Application):
     """
@@ -49,22 +50,28 @@ class ExplorerPanelApp(Application):
         # Keep track of the singleton panel widget. This is used on context
         # changes to automatically navigate to the new context.
         self._current_panel = None
+
+        # App icon location
+        self._app_icon_light_path = os.path.join(os.path.dirname(__file__), "resources", "app_icon_light.svg")
+        self._app_icon_dark_path = os.path.join(os.path.dirname(__file__), "resources", "app_icon_dark.svg")
     
         # also register a menu entry on the shotgun menu so that users
         # can launch the panel
         self.engine.register_command(
-            "Explorer Panel...",
-            self.create_panel,
+            "Explorer",
+            self.show_dialog,
             {
                 "type": "panel",
                 "short_name": "explorer_panel",
-    
+                
+                "icon": self._app_icon_light_path
+                
                 # dark themed icon for engines that recognize this format
-                "icons": {
-                    "dark": {
-                        "png": os.path.join(os.path.dirname(__file__), "resources", "explorer_panel_menu_icon.png")
-                    }
-                }
+                # "icons": {
+                #     "dark": {
+                #         "png": self._app_icon_path
+                #     }
+                # }
             }
         )
     
@@ -210,39 +217,34 @@ class ExplorerPanelApp(Application):
             self._current_panel = widget
          
         return widget
-    
-    def show_window(self):
+
+    def show_dialog(self):
+        """
+        Shows the UI as a dialog. 
+        """
         app_payload = self.import_module("app")
     
         # start the UI
         try:
-    
-            self.engine.show_dialog(self._unique_panel_id, "Explorer", self, app_payload.AppDialog)    
-    
+            self.engine.show_dialog("Explorer", self, app_payload.AppDialog)
+
             dialog = QtGui.QApplication.activeWindow()
             if dialog :
                 flags = QtCore.Qt.Window
-    
+
                 flags |= QtCore.Qt.WindowTitleHint
-                flags |= QtCore.Qt.WindowSystemMenuHint   
                 flags |= QtCore.Qt.WindowMinimizeButtonHint
                 flags |= QtCore.Qt.WindowMaximizeButtonHint
                 flags |= QtCore.Qt.WindowCloseButtonHint
-                flags |= QtCore.Qt.WindowContextHelpButtonHint
-                flags |= QtCore.Qt.WindowShadeButtonHint
-              
-                dialog.setWindowFlags(flags) 
+                
+                dialog.setWindowFlags(flags)
+                dialog.setWindowIcon(QtGui.QIcon(self._app_icon_dark_path))
                 dialog.show()
         except AttributeError, e:
             # just to gracefully handle older engines and older cores
             self.log_warning("Could not execute show_panel method - please upgrade "
                              "to latest core and engine! Falling back on show_dialog. "
                              "Error: %s" % e)
-            widget = self.create_dialog()
-        else:
-            self._current_panel = widget
-        
-        return widget
     
     def create_dialog(self):
         """
