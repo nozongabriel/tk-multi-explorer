@@ -3,6 +3,7 @@ import os
 import glob
 
 from sgtk.platform.qt import QtCore, QtGui
+import sgtk
 
 import treeitems
 
@@ -23,26 +24,42 @@ class CacheManager(QtCore.QObject):
         self._3d_templates = []
         self._comp_templates = []
 
-        for output_profile in self._app.get_setting("templates", []):
-            cache_template = self._app.get_template_by_name(output_profile['cache_template'])
+        # Get shot templates in from shot or asset context
+        shotgun_shots = self._app.shotgun.find("Shot", [['project.Project.name', 'is', self._app.context.project['name']]], ['code'])
+        
+        search_dict = shotgun_shots[0]
+        search_dict['project'] = self._app.context.project
 
-            work_template = ''
-            if output_profile['work_template']:
-                work_template = self._app.get_template_by_name(output_profile['work_template'])
-            preview_template = ''
-            if output_profile['preview_template']:
-                preview_template = self._app.get_template_by_name(output_profile['preview_template'])
+        entity_context = self._app.sgtk.context_from_entity_dictionary(search_dict)
 
-            template_dict = {'cache_template': cache_template, 'work_template': work_template, 'preview_template': preview_template}
+        # Statically add the tk-houdini engine as I could not get this to work with the tk-desktop engine
+        # Still contacting support about it :(
+        settings = sgtk.platform.find_app_settings('tk-houdini', self._app.name, self._app.sgtk, entity_context)
+        self._app.log_debug(settings)
 
-            extension = cache_template.definition.split('.')[-1]
-            if extension in image_types:
-                if 'Compositing' in cache_template.definition:
-                    self._comp_templates.append(template_dict)
+        if settings:
+            for output_profile in settings[0]["settings"]["templates"]:
+                cache_template = self._app.get_template_by_name(output_profile['cache_template'])
+
+                work_template = ''
+                if output_profile['work_template']:
+                    work_template = self._app.get_template_by_name(output_profile['work_template'])
+                preview_template = ''
+                if output_profile['preview_template']:
+                    preview_template = self._app.get_template_by_name(output_profile['preview_template'])
+
+                template_dict = {'cache_template': cache_template, 'work_template': work_template, 'preview_template': preview_template}
+
+                extension = cache_template.definition.split('.')[-1]
+                if extension in image_types:
+                    if 'Compositing' in cache_template.definition:
+                        self._comp_templates.append(template_dict)
+                    else:
+                        self._2d_templates.append(template_dict)
                 else:
-                    self._2d_templates.append(template_dict)
-            else:
-                self._3d_templates.append(template_dict)
+                    self._3d_templates.append(template_dict)
+        else:
+            self._app.log_error("Could not find settings for the cachemanager. App will not work!")
 
     ############################################################################
     # Public methods

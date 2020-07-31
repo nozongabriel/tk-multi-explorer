@@ -55,25 +55,45 @@ class ExplorerPanelApp(Application):
         self._app_icon_light_path = os.path.join(os.path.dirname(__file__), "resources", "app_icon_light.svg")
         self._app_icon_dark_path = os.path.join(os.path.dirname(__file__), "resources", "app_icon_dark.svg")
     
-        # also register a menu entry on the shotgun menu so that users
+        # Register a show_dialog when we need to create a window in the tk-desktop
+        # Register a menu entry on the shotgun menu in dcc's so that users
         # can launch the panel
-        self.engine.register_command(
-            "Explorer",
-            self.show_dialog,
-            {
-                "type": "panel",
-                "short_name": "explorer_panel",
-                
-                "icon": self._app_icon_light_path
-                
-                # dark themed icon for engines that recognize this format
-                # "icons": {
-                #     "dark": {
-                #         "png": self._app_icon_path
-                #     }
-                # }
-            }
-        )
+        if self.engine.name == 'tk-desktop':
+            self.engine.register_command(
+                "Explorer",
+                self.show_dialog,
+                {
+                    "type": "panel",
+                    "short_name": "explorer_panel",
+                    
+                    "icon": self._app_icon_light_path
+                    
+                    # dark themed icon for engines that recognize this format
+                    # "icons": {
+                    #     "dark": {
+                    #         "png": self._app_icon_path
+                    #     }
+                    # }
+                }
+            )
+        else:
+            self.engine.register_command(
+                "Explorer...",
+                self.create_panel,
+                {
+                    "type": "panel",
+                    "short_name": "explorer_panel",
+                    
+                    "icon": self._app_icon_light_path
+                    
+                    # dark themed icon for engines that recognize this format
+                    # "icons": {
+                    #     "dark": {
+                    #         "png": self._app_icon_path
+                    #     }
+                    # }
+                }
+            )
     
     @property
     def context_change_allowed(self):

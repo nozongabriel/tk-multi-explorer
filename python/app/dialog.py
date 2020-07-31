@@ -265,10 +265,13 @@ class AppDialog(QtGui.QWidget):
             # Get caches
             self._cache_manager.set_thread_variables(current_item.text(), steps, type_filter, self._search_bar.text())
             
-            self._cache_manager.get_caches()
-            # if not self._cache_thread.isRunning():
-            #     self._set_processing_gui()
-            #     self._cache_thread.start()
+            # Run get caches async
+            if True:
+                if not self._cache_thread.isRunning():
+                    self._set_processing_gui()
+                    self._cache_thread.start()
+            else:
+                self._cache_manager.get_caches()
 
     def _set_done_gui(self):
         self._current_state_label.setText('Done')
