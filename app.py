@@ -52,8 +52,7 @@ class ExplorerPanelApp(Application):
         self._current_panel = None
 
         # App icon location
-        self._app_icon_light_path = os.path.join(os.path.dirname(__file__), "resources", "app_icon_light.svg")
-        self._app_icon_dark_path = os.path.join(os.path.dirname(__file__), "resources", "app_icon_dark.svg")
+        self._app_icon = os.path.join(os.path.dirname(__file__), "resources", "app_icon.svg")
     
         # Register a show_dialog when we need to create a window in the tk-desktop
         # Register a menu entry on the shotgun menu in dcc's so that users
@@ -66,7 +65,7 @@ class ExplorerPanelApp(Application):
                     "type": "panel",
                     "short_name": "explorer_panel",
                     
-                    "icon": self._app_icon_light_path
+                    "icon": self._app_icon
                     
                     # dark themed icon for engines that recognize this format
                     # "icons": {
@@ -84,7 +83,7 @@ class ExplorerPanelApp(Application):
                     "type": "panel",
                     "short_name": "explorer_panel",
                     
-                    "icon": self._app_icon_light_path
+                    "icon": self._app_icon
                     
                     # dark themed icon for engines that recognize this format
                     # "icons": {
@@ -258,7 +257,7 @@ class ExplorerPanelApp(Application):
                 flags |= QtCore.Qt.WindowCloseButtonHint
                 
                 dialog.setWindowFlags(flags)
-                dialog.setWindowIcon(QtGui.QIcon(self._app_icon_dark_path))
+                dialog.setWindowIcon(QtGui.QIcon(self._app_icon))
                 dialog.show()
         except AttributeError, e:
             # just to gracefully handle older engines and older cores
