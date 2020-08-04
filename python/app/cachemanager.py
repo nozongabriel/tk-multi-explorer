@@ -22,7 +22,6 @@ class CacheManager(QtCore.QObject):
 
         self._2d_templates = []
         self._3d_templates = []
-        self._comp_templates = []
 
         # Get shot templates in from shot or asset context
         shotgun_shots = self._app.shotgun.find("Shot", [['project.Project.name', 'is', self._app.context.project['name']]], ['code'])
@@ -35,15 +34,17 @@ class CacheManager(QtCore.QObject):
         # Statically add the tk-houdini engine as I could not get this to work with the tk-desktop engine
         # Still contacting support about it :(
         settings = sgtk.platform.find_app_settings('tk-houdini', self._app.name, self._app.sgtk, entity_context)
-        self._app.log_debug(settings)
+        self._app.log_debug('Cache Manager Settings {}'.format(settings))
 
         if settings:
             for output_profile in settings[0]["settings"]["templates"]:
                 cache_template = self._app.get_template_by_name(output_profile['cache_template'])
 
-                work_template = ''
+                work_template = []
                 if output_profile['work_template']:
-                    work_template = self._app.get_template_by_name(output_profile['work_template'])
+                    for template_name in output_profile['work_template']:
+                        work_template.append(self._app.get_template_by_name(template_name))
+                
                 preview_template = ''
                 if output_profile['preview_template']:
                     preview_template = self._app.get_template_by_name(output_profile['preview_template'])
@@ -52,14 +53,14 @@ class CacheManager(QtCore.QObject):
 
                 extension = cache_template.definition.split('.')[-1]
                 if extension in image_types:
-                    if 'Compositing' in cache_template.definition:
-                        self._comp_templates.append(template_dict)
-                    else:
-                        self._2d_templates.append(template_dict)
+                    self._2d_templates.append(template_dict)
                 else:
                     self._3d_templates.append(template_dict)
         else:
             self._app.log_error("Could not find settings for the cachemanager. App will not work!")
+
+        self._app.log_debug('2D Templates {}'.format(self._2d_templates))
+        self._app.log_debug('3D Templates {}'.format(self._3d_templates))
 
     ############################################################################
     # Public methods
@@ -94,11 +95,6 @@ class CacheManager(QtCore.QObject):
                     self._set_hidden(False, self._2d_item_dict[step], self._thread_var['search_text'])
                 else:
                     self._2d_item_dict[step] = self._caches_from_templates(self._2d_templates, ui_fields, self._thread_var['search_text'])
-
-                    # Add compositing (exeption, in time shoud be removed)
-                    if step == 'Compositing':
-                        self._2d_item_dict[step] += self._caches_from_templates(self._comp_templates, ui_fields, self._thread_var['search_text'])
-
             elif step in self._2d_item_dict:
                 self._set_hidden(True, self._2d_item_dict[step], self._thread_var['search_text'])
 
@@ -119,7 +115,11 @@ class CacheManager(QtCore.QObject):
         items = []
         for template_dict in templates:
             template = template_dict['cache_template']
+            self._app.log_debug('Searching Template {}'.format(template))
+            self._app.log_debug('With Fields {}'.format(ui_fields))
+            
             cache_paths = self._app.sgtk.abstract_paths_from_template(template, ui_fields)
+            self._app.log_debug('Found caches {}'.format(cache_paths))
             
             # different logic for renders
             if 'AOV' in template.keys and 'RenderLayer' in template.keys:
@@ -134,12 +134,11 @@ class CacheManager(QtCore.QObject):
                 for cache_path in cache_paths:
                     fields = template.get_fields(cache_path)
                     fields['templates'] = template_dict
-                    # Copy over step for comp (should be removed)
-                    fields['Step'] = ui_fields['Step']
+                    
                     # Fields for toplevel items
                     fields['isrendertoplevel'] = False
                     fields['isrenderlayer'] = False
-                    fields['published'] = self._check_published(cache_path)
+                    fields['published'] = cache_path in self._publishes
 
                     if not top_level_item or top_level_item.get_fields()['version'] != fields['version']:
                         if top_level_item and top_level_item.childCount():
@@ -193,9 +192,7 @@ class CacheManager(QtCore.QObject):
                 for cache_path in cache_paths:
                     fields = template.get_fields(cache_path)
                     fields['templates'] = template_dict
-                    # Copy over step for comp (should be removed)
-                    fields['Step'] = ui_fields['Step']
-                    fields['published'] = self._check_published(cache_path)
+                    fields['published'] = cache_path in self._publishes
 
                     # Create copy of fields to compare against, remove keys that can not be the same
                     fields_no_ver = fields.copy()
@@ -234,9 +231,3 @@ class CacheManager(QtCore.QObject):
             if current_hidden_var != new_hidden_var:
                 item.setHidden(new_hidden_var)
                 item.treeWidget().header().resizeSections(QtGui.QHeaderView.ResizeToContents)
-
-    def _check_published(self, path):
-        for publish in self._publishes:
-            if publish == path:
-                return True
-        return False

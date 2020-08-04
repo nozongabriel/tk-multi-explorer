@@ -13,7 +13,7 @@
 # expected fields in the configuration file for this engine
 configuration:
     templates:
-        type: list     
+        type: list
         description: >
             Specify a list of templates to be scanned by the Explorer.
         allows_empty: True
@@ -29,11 +29,18 @@ configuration:
                         Template defining where the cache is.
                     fields: context, version, *
                 work_template:
-                    type: template
+                    type: list
                     description: >
-                        Template defining where a linked workfile is.
-                    fields: context, version, *
+                        Specify a list of templates to be scanned by the Explorer.
                     allows_empty: True
+
+                    values:
+                        type: template
+                        description: >
+                            Template defining where a linked workfile is.
+                        fields: context, version, *
+                        allows_empty: True
+                    
                 preview_template:
                     type: template
                     description: >

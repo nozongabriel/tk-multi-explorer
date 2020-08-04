@@ -122,14 +122,16 @@ class TreeItem(TopLevelTreeItem):
         # to do: work_template does not work for renders due to 'step' field being incorrect 
         # currently compositing when it should be lighting or ...
         if 'templates' in self._fields.keys() and not self._item_expanded:
-            work_template = self._fields['templates']['work_template']
-            if work_template:
-                path = work_template.apply_fields(self._fields)
-                fields = self._fields.copy()
-                fields.pop('templates', None)
+            work_templates = self._fields['templates']['work_template']
+            if work_templates:
+                for work_template in work_templates:
+                    path = work_template.apply_fields(self._fields)
+                    fields = self._fields.copy()
+                    fields.pop('templates', None)
 
-                if os.path.exists(path):
-                    self._create_child_item(path, fields)
+                    if os.path.exists(path):
+                        self._create_child_item(path, fields)
+                        break
 
             preview_template = self._fields['templates']['preview_template']
             if preview_template:
