@@ -34,7 +34,7 @@ class AppDialog(QtGui.QWidget):
         # first, call the base class and let it do its thing.
         QtGui.QWidget.__init__(self, parent)
 
-        self.image_types = ('exr', 'jpg', 'dpx', 'png', 'tiff')
+        self.image_types = ('exr', 'jpg', 'dpx', 'png', 'tiff', 'tif', 'tga')
         self.movie_types = ('mov', 'mp4')
 
         # most of the useful accessors are available through the Application class instance
@@ -521,7 +521,7 @@ class AppDialog(QtGui.QWidget):
         shotgun_list = self._current_sgtk.shotgun.find("Step", [], ['code', 'short_name'])
         step_list = []
         for step in shotgun_list:
-            step_list.append(step['code'])
+            step_list.append(step['short_name'])
         step_list.sort()
 
         for step in step_list:
