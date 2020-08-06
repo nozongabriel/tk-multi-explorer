@@ -418,13 +418,13 @@ class AppDialog(QtGui.QWidget):
             QtGui.QGuiApplication.clipboard().setText(clip_string)
 
     def _detail_click_open_nuke(self):
-        print self._get_selected_path_by_type(['nk'])
+        self._current_sgtk.log_info('Not yet implemented opening {}'.format(self._get_selected_path_by_type(['nk'])))
 
     def _detail_click_open_hou(self):
-        print self._get_selected_path_by_type(['hip'])
+        self._current_sgtk.log_info('Not yet implemented opening {}'.format(self._get_selected_path_by_type(['hip'])))
 
     def _detail_click_open_maya(self):
-        print self._get_selected_path_by_type(['ma'])
+        self._current_sgtk.log_info('Not yet implemented opening {}'.format(self._get_selected_path_by_type(['ma'])))
 
     def _detail_click_open_images(self):
         self._open_rv(self._get_selected_path_by_type(self.image_types))
