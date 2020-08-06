@@ -80,10 +80,9 @@ class CacheManager(QtCore.QObject):
     def get_caches(self):
         # get all published paths for shot
         self._publishes = []
-        base_project_path = os.path.dirname(self._app.tank.project_path)
 
-        for publish_file in self._app.shotgun.find('PublishedFile', [['project.Project.name', 'is', self._app.context.project['name']]], ['path_cache']):
-            self._publishes.append(os.path.join(base_project_path, publish_file['path_cache'].replace('/', os.sep)))
+        for publish_file in self._app.shotgun.find('PublishedFile', [['project.Project.name', 'is', self._app.context.project['name']]], ['path']):
+            self._publishes.append(publish_file['path']['local_path'].replace('/', os.sep))
 
         # start main loop
         for step, enabled in self._thread_var['step_filters'].items():
