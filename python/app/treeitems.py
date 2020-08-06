@@ -82,9 +82,12 @@ class RenderTopLevelTreeItem(TopLevelTreeItem):
             properties['name'] = 'Render_{}_{}'.format(self._fields['Shot'], str(self._fields['version']).zfill(3))
         return properties
 
-class TreeItem(TopLevelTreeItem):
+class TreeItem(QtGui.QTreeWidgetItem):
     def __init__(self, path, fields, column_names):
-        super(TreeItem, self).__init__(path, fields, column_names)
+        super(TreeItem, self).__init__()
+
+        self._fields = fields
+        self._column_names = column_names
         self._item_expanded = False
 
         # Check if it can have children through templates
@@ -119,8 +122,6 @@ class TreeItem(TopLevelTreeItem):
         return item
 
     def item_expand(self):
-        # to do: work_template does not work for renders due to 'step' field being incorrect 
-        # currently compositing when it should be lighting or ...
         if 'templates' in self._fields.keys() and not self._item_expanded:
             work_templates = self._fields['templates']['work_template']
             if work_templates:
