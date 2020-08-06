@@ -85,6 +85,7 @@ class CacheManager(QtCore.QObject):
         for publish_file in self._app.shotgun.find('PublishedFile', [['project.Project.name', 'is', self._app.context.project['name']]], ['path_cache']):
             self._publishes.append(os.path.join(base_project_path, publish_file['path_cache'].replace('/', os.sep)))
 
+        # start main loop
         for step, enabled in self._thread_var['step_filters'].items():
             ui_fields = {
                 'Shot': self._thread_var['shot'],
@@ -128,7 +129,7 @@ class CacheManager(QtCore.QObject):
 
                 # Add caches to tree
                 top_level_item = None
-                renderlayer_item = None
+                version_item = None
                 aov_item = None
 
                 for cache_path in cache_paths:
@@ -137,10 +138,17 @@ class CacheManager(QtCore.QObject):
                     
                     # Fields for toplevel items
                     fields['isrendertoplevel'] = False
-                    fields['isrenderlayer'] = False
+                    fields['isversion'] = False
                     fields['published'] = cache_path in self._publishes
+                    
+                    # Create copy of fields to compare against, remove keys that can not be the same
+                    fields_no_ver = fields.copy()
+                    fields_no_ver.pop('version', None)
+                    fields_no_ver.pop('published', None)
+                    fields_no_ver.pop('AOV', None)
+                    fields_no_ver['isrendertoplevel'] = True
 
-                    if not top_level_item or top_level_item.get_fields()['version'] != fields['version']:
+                    if not top_level_item or top_level_item.get_fields() != fields_no_ver:
                         if top_level_item and top_level_item.childCount():
                             for index in range(top_level_item.childCount()):
                                 top_level_item.child(index).post_process()
@@ -149,20 +157,18 @@ class CacheManager(QtCore.QObject):
                             self.add_item_sig.emit(top_level_item)
                             items.append(top_level_item)
 
-                        top_level_fields = fields.copy()
-                        top_level_fields['isrendertoplevel'] = True
-                        top_level_item = treeitems.RenderTopLevelTreeItem(cache_path, top_level_fields, self._column_names)
-                        renderlayer_item = None
+                        top_level_item = treeitems.RenderTopLevelTreeItem(cache_path, fields_no_ver, self._column_names)
+                        version_item = None
 
-                    if not renderlayer_item or renderlayer_item.get_fields()['RenderLayer'] != fields['RenderLayer']:
+                    if not version_item or version_item.get_fields()['version'] != fields['version']:
                         render_layer_fields = fields.copy()
-                        render_layer_fields['isrenderlayer'] = True
-                        renderlayer_item = treeitems.RenderTopLevelTreeItem(cache_path, render_layer_fields, self._column_names)
+                        render_layer_fields['isversion'] = True
+                        version_item = treeitems.RenderTopLevelTreeItem(cache_path, render_layer_fields, self._column_names)
 
-                        top_level_item.addChild(renderlayer_item)
+                        top_level_item.addChild(version_item)
                         
                     aov_item = treeitems.AovTreeItem(cache_path, fields, self._column_names)
-                    renderlayer_item.addChild(aov_item)
+                    version_item.addChild(aov_item)
 
                 # Add the last element
                 if top_level_item and top_level_item.childCount():

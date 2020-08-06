@@ -58,28 +58,20 @@ class RenderTopLevelTreeItem(TopLevelTreeItem):
         super(RenderTopLevelTreeItem, self).__init__(path, fields, column_names)
 
     def _find_latest_child(self):
-        self._latest_child = None
-
-        if self._fields['isrenderlayer']:
+        if self._fields['isversion']:
             for child_index in range(self.childCount()):
                 if self.child(child_index).get_properties()['name'] == 'RGBA':
                     self._latest_child = self.child(child_index)
-        elif self._fields['isrendertoplevel']:
-            for child_index in range(self.childCount()):
-                if self.child(child_index).get_properties()['name'] == 'masterLayer':
-                    self._latest_child = self.child(child_index)
-
-        if not self._latest_child:
-            self._latest_child = self.child(0)
+                    break
+        else:
+            super(RenderTopLevelTreeItem, self)._find_latest_child()
+  
         return self._latest_child
 
     def get_properties(self):
         properties = self._latest_child.get_properties().copy()
-
-        if self._fields['isrenderlayer']:
-            properties['name'] = self._fields['RenderLayer']
-        elif self._fields['isrendertoplevel']:
-            properties['name'] = 'Render_{}_{}'.format(self._fields['Shot'], str(self._fields['version']).zfill(3))
+        properties['name'] = '{}_{}_{}_v{}'.format(self._fields['Shot'], self._fields['RenderLayer'], self._fields['Camera'], properties['version'])
+        
         return properties
 
 class TreeItem(QtGui.QTreeWidgetItem):
