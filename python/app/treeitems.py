@@ -70,7 +70,7 @@ class RenderTopLevelTreeItem(TopLevelTreeItem):
 
     def get_properties(self):
         properties = self._latest_child.get_properties().copy()
-        properties['name'] = '{}_{}_{}_v{}'.format(self._fields['Shot'], self._fields['RenderLayer'], self._fields['Camera'], properties['version'])
+        properties['name'] = '{}_{}_{}_v{}'.format(self._fields['name'], self._fields['RenderLayer'], self._fields['Camera'], properties['version'])
         
         return properties
 

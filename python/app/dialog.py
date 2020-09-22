@@ -518,7 +518,8 @@ class AppDialog(QtGui.QWidget):
 
     def _fill_filters(self):
         # Step List
-        shotgun_list = self._current_sgtk.shotgun.find("Step", [], ['code', 'short_name'])
+        # Filter for shot as explorer currently does not support assets type
+        shotgun_list = self._current_sgtk.shotgun.find("Step", [["entity_type", "is", "Shot"]], ['code', 'short_name', 'entity_type'])
         step_list = []
         for step in shotgun_list:
             step_list.append(step['short_name'])
