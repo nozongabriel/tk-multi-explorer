@@ -59,7 +59,7 @@ class ExplorerPanelApp(Application):
         # can launch the panel
         if self.engine.name == 'tk-desktop':
             self.engine.register_command(
-                "Explorer",
+                "Explorer (beta)",
                 self.show_dialog,
                 {
                     "type": "panel",
@@ -84,13 +84,6 @@ class ExplorerPanelApp(Application):
                     "short_name": "explorer_panel",
                     
                     "icon": self._app_icon
-                    
-                    # dark themed icon for engines that recognize this format
-                    # "icons": {
-                    #     "dark": {
-                    #         "png": self._app_icon_path
-                    #     }
-                    # }
                 }
             )
     
