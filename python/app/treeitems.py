@@ -44,6 +44,9 @@ class TopLevelTreeItem(QtGui.QTreeWidgetItem):
     def get_path(self):
         return self._latest_child.get_path()
 
+    def get_preview_path(self):
+        return self._latest_child.get_preview_path()
+
     def get_type(self):
         return self._latest_child.get_type()
 
@@ -81,6 +84,7 @@ class TreeItem(QtGui.QTreeWidgetItem):
         self._fields = fields
         self._column_names = column_names
         self._item_expanded = False
+        self._preview_item = None
 
         # Check if it can have children through templates
         if 'templates' in self._fields.keys() and len(self._fields['templates'].keys()) > 1:
@@ -133,7 +137,7 @@ class TreeItem(QtGui.QTreeWidgetItem):
                 fields.pop('templates', None)
                 
                 if os.path.exists(path):
-                    self._create_child_item(path, fields)
+                    self._preview_item = self._create_child_item(path, fields)
 
             self._item_expanded = True
 
@@ -143,6 +147,12 @@ class TreeItem(QtGui.QTreeWidgetItem):
 
     def get_path(self):
         return self._properties['path']
+
+    def get_preview_path(self):
+        if self._preview_item:
+            return self._preview_item.get_path()
+        else:
+            return self.get_path()
 
     def get_type(self):
         return self._properties['type']

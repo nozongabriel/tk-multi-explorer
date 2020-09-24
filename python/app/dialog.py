@@ -322,7 +322,7 @@ class AppDialog(QtGui.QWidget):
 
     def _tree_item_double_clicked(self, item, column):
         if item.get_type() in self.image_types or item.get_type() in self.movie_types:
-            self._open_rv(item.get_path())
+            self._open_rv(item.get_preview_path())
 
     def _item_expanded(self, item):
         item.item_expand()
@@ -343,11 +343,9 @@ class AppDialog(QtGui.QWidget):
         self._item_expanded(item)
 
         # Set detail icon
-        current_icon = item.icon(self._column_names.index_name('thumb'))
-        if current_icon:
-            thumb = self._icon_manager.get_icon_name(item.get_type())
-            if thumb:
-                self._detail_icon.setPixmap(self._icon_manager.get_pixmap(thumb))
+        thumb = self._icon_manager.get_icon_name(item.get_type())
+        if thumb:
+            self._detail_icon.setPixmap(self._icon_manager.get_pixmap(thumb))
 
         # Enable correct buttons
         self._detail_copy_path.setEnabled(True)
