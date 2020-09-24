@@ -57,7 +57,7 @@ class AppDialog(QtGui.QWidget):
 
         # Setup UI
         self._setup_ui()
-        self._fill_shots()
+        self._fill_shots_assets()
         self._fill_filters()
 
     ############################################################################
@@ -84,7 +84,17 @@ class AppDialog(QtGui.QWidget):
         project_label = QtGui.QLabel(self._current_sgtk.context.project['name'])
 
         self._shot_list_widget = QtGui.QListWidget()
-        self._shot_list_widget.currentItemChanged.connect(self._shot_selected)
+        self._shot_list_widget.currentItemChanged.connect(self._shot_asset_selected)
+
+        self._asset_list_widget = QtGui.QListWidget()
+        self._asset_list_widget.currentItemChanged.connect(self._shot_asset_selected)
+
+        self._tab_list_widgets = [self._shot_list_widget, self._asset_list_widget]
+
+        self._tab_widget = QtGui.QTabWidget()
+        self._tab_widget.addTab(self._shot_list_widget, 'Shots')
+        self._tab_widget.addTab(self._asset_list_widget, 'Assets')
+        self._tab_widget.tabBarClicked.connect(self._refresh)
 
         self._current_state_label = QtGui.QLabel('Done')
 
@@ -107,14 +117,14 @@ class AppDialog(QtGui.QWidget):
         self._type_list_widget.itemChanged.connect(self._fill_treewidget)
 
         side_bar.addWidget(project_label)
-        side_bar.addWidget(self._shot_list_widget)
+        side_bar.addWidget(self._tab_widget)
         side_bar.addWidget(self._current_state_label)
         side_bar.addWidget(filter_widget)
         side_bar.addWidget(self._step_list_widget)
         side_bar.addLayout(filter_buttons)
         side_bar.addWidget(self._type_list_widget)
 
-        side_bar.setStretchFactor(self._shot_list_widget, 20)
+        side_bar.setStretchFactor(self._tab_widget, 20)
 
         splitter_side_bar_widget = QtGui.QWidget()
         splitter_side_bar_widget.setLayout(side_bar)
@@ -247,8 +257,11 @@ class AppDialog(QtGui.QWidget):
         self.layout().addLayout(upper_bar)
         self.layout().addWidget(main_splitter)
 
-    def _fill_treewidget(self):
-        current_item = self._shot_list_widget.currentItem()
+    def _fill_treewidget(self, tab_selection = -1):
+        if tab_selection == -1:
+            tab_selection = self._tab_widget.currentIndex()
+        
+        current_item = self._tab_list_widgets[tab_selection].currentItem()
 
         if current_item:
             # Filters
@@ -279,13 +292,13 @@ class AppDialog(QtGui.QWidget):
     def _set_processing_gui(self):
         self._current_state_label.setText('Processing...')
 
-    def _shot_selected(self, current_item, previous_item):
+    def _shot_asset_selected(self):
         if self._cache_thread.isRunning():
             self._cache_thread.terminate()
 
         self._refresh()
 
-    def _refresh(self):
+    def _refresh(self, tab_selection = -1):
         # Reset Detail Tab
         self._detail_icon.setPixmap(None)
 
@@ -302,7 +315,7 @@ class AppDialog(QtGui.QWidget):
         # Reset Tree Widget
         self._tree_widget.invisibleRootItem().takeChildren()
         self._cache_manager.clear_cache()
-        self._fill_treewidget()
+        self._fill_treewidget(tab_selection)
 
     def _select_all_filters(self):
         self._step_list_widget.itemChanged.disconnect()
@@ -501,8 +514,10 @@ class AppDialog(QtGui.QWidget):
                     if type_click in type_dict.keys():
                         return type_dict[type_click]
 
-    def _fill_shots(self):
+    def _fill_shots_assets(self):
         current_project = self._current_sgtk.context.project['name']
+        
+        # Shots
         shotgun_shots = self._current_sgtk.shotgun.find("Shot", [['project.Project.name', 'is', current_project]], ['code'])
 
         shots = []
@@ -511,16 +526,27 @@ class AppDialog(QtGui.QWidget):
             # Fix for Shotgun doing weird things
             shots.append(shot['code'].replace(' ', '-'))
         shots.sort()
-
         self._shot_list_widget.addItems(shots)
+
+        # Assets
+        shotgun_assets = self._current_sgtk.shotgun.find("Asset", [['project.Project.name', 'is', current_project]], ['code'])
+        
+        assets = []
+        for asset in shotgun_assets:
+            # If the asset code contains a space it means there is probably a '-', replace all spaces with this
+            # Fix for Shotgun doing weird things
+            assets.append(asset['code'].replace(' ', '-'))
+        assets.sort()
+        self._asset_list_widget.addItems(assets)
 
     def _fill_filters(self):
         # Step List
         # Filter for shot as explorer currently does not support assets type
-        shotgun_list = self._current_sgtk.shotgun.find("Step", [["entity_type", "is", "Shot"]], ['code', 'short_name', 'entity_type'])
+        shotgun_list = self._current_sgtk.shotgun.find("Step", [], ['code', 'short_name', 'entity_type'])
         step_list = []
         for step in shotgun_list:
             step_list.append(step['short_name'])
+        step_list = list(dict.fromkeys(step_list))
         step_list.sort()
 
         for step in step_list:
