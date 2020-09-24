@@ -10,7 +10,7 @@ import treeitems
 class CacheManager(QtCore.QObject):
     add_item_sig = QtCore.Signal(treeitems.TopLevelTreeItem)
 
-    def __init__(self, app, column_names, image_types):
+    def __init__(self, app, column_names, image_types, tab_types):
         super(CacheManager, self).__init__()
 
         self._app = app
@@ -20,44 +20,46 @@ class CacheManager(QtCore.QObject):
         self._2d_item_dict = {}
         self._3d_item_dict = {}
 
-        self._2d_templates = []
-        self._3d_templates = []
+        self._2d_templates = {}
+        self._3d_templates = {}
 
-        # Get shot templates in from shot or asset context
-        shotgun_shots = self._app.shotgun.find("Shot", [['project.Project.name', 'is', self._app.context.project['name']]], ['code'])
-        
-        search_dict = shotgun_shots[0]
-        search_dict['project'] = self._app.context.project
+        for item_type in tab_types:
+            self._2d_templates[item_type] = []
+            self._3d_templates[item_type] = []
 
-        entity_context = self._app.sgtk.context_from_entity_dictionary(search_dict)
+            # Get templates in from shot and asset context
+            search_dict = self._app.shotgun.find_one(item_type, [['project.Project.name', 'is', self._app.context.project['name']]], ['code'])
+            search_dict['project'] = self._app.context.project
 
-        # Statically add the tk-houdini engine as I could not get this to work with the tk-desktop engine
-        # Still contacting support about it :(
-        settings = sgtk.platform.find_app_settings('tk-houdini', self._app.name, self._app.sgtk, entity_context)
-        self._app.log_debug('Cache Manager Settings {}'.format(settings))
+            entity_context = self._app.sgtk.context_from_entity_dictionary(search_dict)
 
-        if settings:
-            for output_profile in settings[0]["settings"]["templates"]:
-                cache_template = self._app.get_template_by_name(output_profile['cache_template'])
+            # Statically add the tk-houdini engine as I could not get this to work with the tk-desktop engine
+            # Still contacting support about it :(
+            settings = sgtk.platform.find_app_settings('tk-houdini', self._app.name, self._app.sgtk, entity_context)
+            self._app.log_debug('Cache Manager Settings {}'.format(settings))
 
-                work_template = []
-                if output_profile['work_template']:
-                    for template_name in output_profile['work_template']:
-                        work_template.append(self._app.get_template_by_name(template_name))
-                
-                preview_template = ''
-                if output_profile['preview_template']:
-                    preview_template = self._app.get_template_by_name(output_profile['preview_template'])
+            if settings:
+                for output_profile in settings[0]["settings"]["templates"]:
+                    cache_template = self._app.get_template_by_name(output_profile['cache_template'])
 
-                template_dict = {'cache_template': cache_template, 'work_template': work_template, 'preview_template': preview_template}
+                    work_template = []
+                    if output_profile['work_template']:
+                        for template_name in output_profile['work_template']:
+                            work_template.append(self._app.get_template_by_name(template_name))
+                    
+                    preview_template = ''
+                    if output_profile['preview_template']:
+                        preview_template = self._app.get_template_by_name(output_profile['preview_template'])
 
-                extension = cache_template.definition.split('.')[-1]
-                if extension in image_types:
-                    self._2d_templates.append(template_dict)
-                else:
-                    self._3d_templates.append(template_dict)
-        else:
-            self._app.log_error("Could not find settings for the cachemanager. App will not work!")
+                    template_dict = {'cache_template': cache_template, 'work_template': work_template, 'preview_template': preview_template}
+
+                    extension = cache_template.definition.split('.')[-1]
+                    if extension in image_types:
+                        self._2d_templates[item_type].append(template_dict)
+                    else:
+                        self._3d_templates[item_type].append(template_dict)
+            else:
+                self._app.log_error("Could not find settings for the cachemanager. App will not work!")
 
         self._app.log_debug('2D Templates {}'.format(self._2d_templates))
         self._app.log_debug('3D Templates {}'.format(self._3d_templates))
@@ -69,16 +71,17 @@ class CacheManager(QtCore.QObject):
         self._2d_item_dict.clear()
         self._3d_item_dict.clear()
 
-    def set_thread_variables(self, shot, step_filters, type_filters, search_text):
+    def set_thread_variables(self, shot_asset, item_type, step_filters, type_filters, search_text):
         self._thread_var = {
-            'shot': shot,
+            'item_name': shot_asset,
+            'item_type': item_type,
             'step_filters': step_filters,
             'type_filters': type_filters,
             'search_text': search_text
         }
 
     def get_caches(self):
-        # get all published paths for shot
+        # get all published paths for item
         self._publishes = []
 
         for publish_file in self._app.shotgun.find('PublishedFile', [['project.Project.name', 'is', self._app.context.project['name']]], ['path']):
@@ -87,14 +90,14 @@ class CacheManager(QtCore.QObject):
         # start main loop
         for step, enabled in self._thread_var['step_filters'].items():
             ui_fields = {
-                'Shot': self._thread_var['shot'],
+                self._thread_var['item_type']: self._thread_var['item_name'],
                 'Step': step}
 
             if enabled and self._thread_var['type_filters']['2D']:
                 if step in self._2d_item_dict:
                     self._set_hidden(False, self._2d_item_dict[step], self._thread_var['search_text'])
                 else:
-                    self._2d_item_dict[step] = self._caches_from_templates(self._2d_templates, ui_fields, self._thread_var['search_text'])
+                    self._2d_item_dict[step] = self._caches_from_templates(self._2d_templates[self._thread_var['item_type']], ui_fields, self._thread_var['search_text'])
             elif step in self._2d_item_dict:
                 self._set_hidden(True, self._2d_item_dict[step], self._thread_var['search_text'])
 
@@ -102,7 +105,7 @@ class CacheManager(QtCore.QObject):
                 if step in self._3d_item_dict:
                     self._set_hidden(False, self._3d_item_dict[step], self._thread_var['search_text'])
                 else:
-                    self._3d_item_dict[step] = self._caches_from_templates(self._3d_templates, ui_fields, self._thread_var['search_text'])
+                    self._3d_item_dict[step] = self._caches_from_templates(self._3d_templates[self._thread_var['item_type']], ui_fields, self._thread_var['search_text'])
             elif step in self._3d_item_dict:
                 self._set_hidden(True, self._3d_item_dict[step], self._thread_var['search_text'])
 

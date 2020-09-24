@@ -36,6 +36,7 @@ class AppDialog(QtGui.QWidget):
 
         self.image_types = ('exr', 'jpg', 'dpx', 'png', 'tiff', 'tif', 'tga')
         self.movie_types = ('mov', 'mp4')
+        self.tab_types = ('Shot', 'Asset')
 
         # most of the useful accessors are available through the Application class instance
         # it is often handy to keep a reference to this. You can get it via the following method:
@@ -45,7 +46,7 @@ class AppDialog(QtGui.QWidget):
         self._column_names = columnnames.ColumnNames()
         self._icon_manager = iconmanager.IconManager(self._column_names, self.image_types, self.movie_types)
 
-        self._cache_manager = cachemanager.CacheManager(self._current_sgtk, self._column_names, self.image_types)
+        self._cache_manager = cachemanager.CacheManager(self._current_sgtk, self._column_names, self.image_types, self.tab_types)
 
         self._cache_thread = QtCore.QThread()
         self._cache_manager.moveToThread(self._cache_thread)
@@ -89,11 +90,11 @@ class AppDialog(QtGui.QWidget):
         asset_list_widget = QtGui.QListWidget()
         asset_list_widget.currentItemChanged.connect(self._shot_asset_selected)
 
-        self._tab_list_widgets = collections.OrderedDict([('Shots', shot_list_widget), ('Assets', asset_list_widget)])
+        self._tab_list_widgets = collections.OrderedDict([(self.tab_types[0], shot_list_widget), (self.tab_types[1], asset_list_widget)])
 
         self._tab_widget = QtGui.QTabWidget()
-        self._tab_widget.addTab(shot_list_widget, 'Shots')
-        self._tab_widget.addTab(asset_list_widget, 'Assets')
+        self._tab_widget.addTab(shot_list_widget, self.tab_types[0])
+        self._tab_widget.addTab(asset_list_widget, self.tab_types[1])
         self._tab_widget.tabBarClicked.connect(self._refresh)
 
         self._current_state_label = QtGui.QLabel('Done')
@@ -276,7 +277,8 @@ class AppDialog(QtGui.QWidget):
                 type_filter[item.text()] = bool(item.checkState())
 
             # Get caches
-            self._cache_manager.set_thread_variables(current_item.text(), steps, type_filter, self._search_bar.text())
+            item_type = self._tab_list_widgets.items()[tab_selection][0]
+            self._cache_manager.set_thread_variables(current_item.text(), item_type, steps, type_filter, self._search_bar.text())
             
             # Run get caches async
             if True:
@@ -517,27 +519,16 @@ class AppDialog(QtGui.QWidget):
     def _fill_shots_assets(self):
         current_project = self._current_sgtk.context.project['name']
         
-        # Shots
-        shotgun_shots = self._current_sgtk.shotgun.find("Shot", [['project.Project.name', 'is', current_project]], ['code'])
+        for item_type in self.tab_types:
+            shotgun_items = self._current_sgtk.shotgun.find(item_type, [['project.Project.name', 'is', current_project]], ['code'])
 
-        shots = []
-        for shot in shotgun_shots:
-            # If the shot code contains a space it means there is probably a '-', replace all spaces with this
-            # Fix for Shotgun doing weird things
-            shots.append(shot['code'].replace(' ', '-'))
-        shots.sort()
-        self._tab_list_widgets['Shots'].addItems(shots)
-
-        # Assets
-        shotgun_assets = self._current_sgtk.shotgun.find("Asset", [['project.Project.name', 'is', current_project]], ['code'])
-        
-        assets = []
-        for asset in shotgun_assets:
-            # If the asset code contains a space it means there is probably a '-', replace all spaces with this
-            # Fix for Shotgun doing weird things
-            assets.append(asset['code'].replace(' ', '-'))
-        assets.sort()
-        self._tab_list_widgets['Assets'].addItems(assets)
+            items = []
+            for item in shotgun_items:
+                # If the shot code contains a space it means there is probably a '-', replace all spaces with this
+                # Fix for Shotgun doing weird things
+                items.append(item['code'].replace(' ', '-'))
+            items.sort()
+            self._tab_list_widgets[item_type].addItems(items)
 
     def _fill_filters(self):
         # Step List
