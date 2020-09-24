@@ -13,7 +13,7 @@ class IconManager(QtGui.QPixmapCache):
         self._thumb_dict = {}
 
         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "resources"))
-        svg_files = ('refresh', 'check', 'cross', 'image', 'houdini', 'maya', 'nuke', 'video', 'clipboard', 'openvdb', 'obj', 'alembic', 'geometry')
+        svg_files = ('refresh', 'check', 'cross', 'image', 'houdini', 'maya', 'nuke', 'arnold', 'video', 'clipboard', 'openvdb', 'obj', 'alembic', 'geometry')
 
         for svg in svg_files:
             image = QtGui.QPixmap(os.path.join(base_path, '{}.svg'.format(svg)))
@@ -44,6 +44,8 @@ class IconManager(QtGui.QPixmapCache):
             thumb = 'obj'
         elif ext == 'vdb':
             thumb = 'openvdb'
+        elif ext in ['ass', 'gz']:
+            thumb = 'arnold'
         elif ext in self._movie_types:
             thumb = 'video'
 
