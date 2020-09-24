@@ -83,17 +83,17 @@ class AppDialog(QtGui.QWidget):
 
         project_label = QtGui.QLabel(self._current_sgtk.context.project['name'])
 
-        self._shot_list_widget = QtGui.QListWidget()
-        self._shot_list_widget.currentItemChanged.connect(self._shot_asset_selected)
+        shot_list_widget = QtGui.QListWidget()
+        shot_list_widget.currentItemChanged.connect(self._shot_asset_selected)
 
-        self._asset_list_widget = QtGui.QListWidget()
-        self._asset_list_widget.currentItemChanged.connect(self._shot_asset_selected)
+        asset_list_widget = QtGui.QListWidget()
+        asset_list_widget.currentItemChanged.connect(self._shot_asset_selected)
 
-        self._tab_list_widgets = [self._shot_list_widget, self._asset_list_widget]
+        self._tab_list_widgets = collections.OrderedDict([('Shots', shot_list_widget), ('Assets', asset_list_widget)])
 
         self._tab_widget = QtGui.QTabWidget()
-        self._tab_widget.addTab(self._shot_list_widget, 'Shots')
-        self._tab_widget.addTab(self._asset_list_widget, 'Assets')
+        self._tab_widget.addTab(shot_list_widget, 'Shots')
+        self._tab_widget.addTab(asset_list_widget, 'Assets')
         self._tab_widget.tabBarClicked.connect(self._refresh)
 
         self._current_state_label = QtGui.QLabel('Done')
@@ -257,11 +257,11 @@ class AppDialog(QtGui.QWidget):
         self.layout().addLayout(upper_bar)
         self.layout().addWidget(main_splitter)
 
-    def _fill_treewidget(self, tab_selection = -1):
+    def _fill_treewidget(self, item = None, tab_selection = -1):
         if tab_selection == -1:
             tab_selection = self._tab_widget.currentIndex()
         
-        current_item = self._tab_list_widgets[tab_selection].currentItem()
+        current_item = self._tab_list_widgets.items()[tab_selection][1].currentItem()
 
         if current_item:
             # Filters
@@ -315,7 +315,7 @@ class AppDialog(QtGui.QWidget):
         # Reset Tree Widget
         self._tree_widget.invisibleRootItem().takeChildren()
         self._cache_manager.clear_cache()
-        self._fill_treewidget(tab_selection)
+        self._fill_treewidget(tab_selection=tab_selection)
 
     def _select_all_filters(self):
         self._step_list_widget.itemChanged.disconnect()
@@ -526,7 +526,7 @@ class AppDialog(QtGui.QWidget):
             # Fix for Shotgun doing weird things
             shots.append(shot['code'].replace(' ', '-'))
         shots.sort()
-        self._shot_list_widget.addItems(shots)
+        self._tab_list_widgets['Shots'].addItems(shots)
 
         # Assets
         shotgun_assets = self._current_sgtk.shotgun.find("Asset", [['project.Project.name', 'is', current_project]], ['code'])
@@ -537,7 +537,7 @@ class AppDialog(QtGui.QWidget):
             # Fix for Shotgun doing weird things
             assets.append(asset['code'].replace(' ', '-'))
         assets.sort()
-        self._asset_list_widget.addItems(assets)
+        self._tab_list_widgets['Assets'].addItems(assets)
 
     def _fill_filters(self):
         # Step List
