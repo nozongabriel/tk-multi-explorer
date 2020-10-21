@@ -95,7 +95,7 @@ class AppDialog(QtGui.QWidget):
         self._tab_widget = QtGui.QTabWidget()
         self._tab_widget.addTab(shot_list_widget, self.tab_types[0])
         self._tab_widget.addTab(asset_list_widget, self.tab_types[1])
-        self._tab_widget.tabBarClicked.connect(self._refresh)
+        self._tab_widget.currentChanged.connect(self._refresh)
 
         self._current_state_label = QtGui.QLabel('Done')
 
@@ -258,11 +258,11 @@ class AppDialog(QtGui.QWidget):
         self.layout().addLayout(upper_bar)
         self.layout().addWidget(main_splitter)
 
-    def _fill_treewidget(self, item = None, tab_selection = -1):
-        if tab_selection == -1:
-            tab_selection = self._tab_widget.currentIndex()
+    def _fill_treewidget(self, item = None, index = -1):
+        if index == -1:
+            index = self._tab_widget.currentIndex()
         
-        current_item = self._tab_list_widgets.items()[tab_selection][1].currentItem()
+        current_item = self._tab_widget.currentWidget().currentItem()
 
         if current_item:
             # Filters
@@ -277,7 +277,10 @@ class AppDialog(QtGui.QWidget):
                 type_filter[item.text()] = bool(item.checkState())
 
             # Get caches
-            item_type = self._tab_list_widgets.items()[tab_selection][0]
+            for type_dict in self._tab_list_widgets.items():
+                if type_dict[1] == self._tab_widget.currentWidget():
+                    item_type = type_dict[0]
+
             self._cache_manager.set_thread_variables(current_item.text(), item_type, steps, type_filter, self._search_bar.text())
             
             # Run get caches async
@@ -300,7 +303,7 @@ class AppDialog(QtGui.QWidget):
 
         self._refresh()
 
-    def _refresh(self, tab_selection = -1):
+    def _refresh(self, index = -1):
         # Reset Detail Tab
         self._detail_icon.setPixmap(None)
 
@@ -317,7 +320,7 @@ class AppDialog(QtGui.QWidget):
         # Reset Tree Widget
         self._tree_widget.invisibleRootItem().takeChildren()
         self._cache_manager.clear_cache()
-        self._fill_treewidget(tab_selection=tab_selection)
+        self._fill_treewidget(index=index)
 
     def _select_all_filters(self):
         self._step_list_widget.itemChanged.disconnect()
